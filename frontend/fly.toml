@@ -1,0 +1,22 @@
+# Frontend Next.js deployed to Fly.io
+# Cần env BACKEND_URL trỏ tới backend Fly app
+
+app = "tiktok-cdt"
+primary_region = "sin"
+
+[build]
+
+[env]
+  BACKEND_URL = "https://tiktok-cdt-backend.fly.dev"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ["app"]
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

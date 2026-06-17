@@ -1,0 +1,39 @@
+# Render Blueprint — deploy backend + frontend
+# Apply: dashboard.render.com → New → Blueprint → chọn repo này
+#
+# Free tier: 750h/tháng/service, sleep sau 15 phút idle (cold start ~30s).
+# Frontend là static site (KHÔNG sleep, KHÔNG tốn quota).
+
+services:
+  # === BACKEND: FastAPI ===
+  - type: web
+    name: tiktok-cdt-backend
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    envVars:
+      - key: DATA_ROOT
+        value: /data
+      - key: CORS_ORIGINS
+        value: https://tiktok-cdt.onrender.com,http://localhost:3000
+      - key: GROQ_API_KEY
+        sync: false   # set thủ công sau khi deploy
+    disk:
+      name: data
+      mountPath: /data
+      sizeGB: 1
+    healthCheckPath: /health
+
+  # === FRONTEND: Next.js ===
+  - type: web
+    name: tiktok-cdt
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./frontend/Dockerfile
+    dockerContext: ./frontend
+    envVars:
+      - key: BACKEND_URL
+        value: https://tiktok-cdt-backend.onrender.com

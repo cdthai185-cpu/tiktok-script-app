@@ -1,0 +1,26 @@
+# Backend FastAPI deployed to Fly.io
+# Volume mount: /data — persist SQLite + profile.md + snapshots
+
+app = "tiktok-cdt-backend"
+primary_region = "sin"  # Singapore — gần Việt Nam nhất
+
+[build]
+
+[env]
+  DATA_ROOT = "/data"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ["app"]
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+
+[mounts]
+  source = "tiktok_data"
+  destination = "/data"
