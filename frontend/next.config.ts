@@ -1,6 +1,13 @@
 import type { NextConfig } from "next";
 
-const BACKEND_URL = process.env.BACKEND_URL ?? "http://127.0.0.1:8001";
+const BACKEND_URL =
+  process.env.BACKEND_URL ||
+  (process.env.NODE_ENV === "production"
+    ? "https://tiktok-cdt-backend.onrender.com"
+    : "http://127.0.0.1:8001");
+
+// Log để debug deploy
+console.log("[next.config] BACKEND_URL =", BACKEND_URL);
 
 const nextConfig: NextConfig = {
   async rewrites() {
