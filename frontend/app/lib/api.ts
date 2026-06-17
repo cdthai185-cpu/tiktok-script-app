@@ -1,6 +1,10 @@
-// Backend được proxy qua Next.js rewrites tại /api/*
-// (xem next.config.ts). Frontend luôn fetch relative — không cần cấu hình URL.
-export const API_BASE = "/api";
+// Frontend fetch trực tiếp backend (CORS).
+// NEXT_PUBLIC_BACKEND_URL được inline tại build time → client bundle.
+export const API_BASE =
+  process.env.NEXT_PUBLIC_BACKEND_URL ||
+  (typeof window !== "undefined" && window.location.hostname.includes("onrender.com")
+    ? "https://tiktok-cdt-backend.onrender.com"
+    : "http://127.0.0.1:8001");
 
 export type Script = {
   id: number;

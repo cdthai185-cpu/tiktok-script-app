@@ -7,6 +7,9 @@ FROM node:20-slim AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+# NEXT_PUBLIC_* được inline vào client bundle tại build time
+ARG NEXT_PUBLIC_BACKEND_URL=https://tiktok-cdt-backend.onrender.com
+ENV NEXT_PUBLIC_BACKEND_URL=$NEXT_PUBLIC_BACKEND_URL
 RUN npm run build
 
 FROM node:20-slim AS runner
