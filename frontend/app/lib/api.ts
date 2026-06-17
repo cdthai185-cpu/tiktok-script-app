@@ -1,6 +1,17 @@
-// Backend proxy qua Next.js Route Handler tại /api/*
-// (xem app/api/[...path]/route.ts). Reliable cho cả prod + local.
-export const API_BASE = "/api";
+// Client fetch trực tiếp backend (CORS đã setup ở backend).
+// Detect runtime: production trên Render → URL Render; local → 127.0.0.1.
+function detectBackend(): string {
+  if (typeof window === "undefined") {
+    return process.env.BACKEND_URL || "http://127.0.0.1:8001";
+  }
+  const host = window.location.hostname;
+  if (host.includes("onrender.com") || host.includes("vercel.app")) {
+    return "https://tiktok-cdt-backend.onrender.com";
+  }
+  return "http://127.0.0.1:8001";
+}
+
+export const API_BASE = detectBackend();
 
 export type Script = {
   id: number;
