@@ -30,17 +30,39 @@ def _generate_text(system: str, user: str, max_tokens: int, temperature: float =
         )
 
     if settings.llm_provider == "groq":
+        # Fallback chain: model chính → các fallback khi 429
+        models = [settings.groq_llm_model]
+        for m in (settings.groq_llm_fallbacks or "").split(","):
+            m = m.strip()
+            if m and m not in models:
+                models.append(m)
+
         client = OpenAI(api_key=settings.groq_api_key, base_url=settings.groq_base_url)
-        resp = client.chat.completions.create(
-            model=settings.groq_llm_model,
-            max_tokens=max_tokens,
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ],
-            temperature=temperature,
-        )
-        return (resp.choices[0].message.content or "").strip()
+        last_error: Exception | None = None
+        for model in models:
+            try:
+                resp = client.chat.completions.create(
+                    model=model,
+                    max_tokens=max_tokens,
+                    messages=[
+                        {"role": "system", "content": system},
+                        {"role": "user", "content": user},
+                    ],
+                    temperature=temperature,
+                )
+                return (resp.choices[0].message.content or "").strip()
+            except APIError as e:
+                last_error = e
+                # 429 = rate limit → thử model tiếp theo
+                if getattr(e, "status_code", None) == 429:
+                    continue
+                # Lỗi khác → raise ngay
+                raise
+        # Tất cả model đều 429
+        raise GenerationError(
+            f"Tất cả Groq model đều hết quota daily. Đợi ~30 phút reset hoặc "
+            f"nạp $5 tại console.groq.com. Model đã thử: {', '.join(models)}"
+        ) from last_error
 
     if settings.llm_provider == "anthropic":
         client = Anthropic(api_key=settings.anthropic_api_key)

@@ -36,7 +36,9 @@ class Settings(BaseSettings):
 
     # Groq (free)
     groq_api_key: str = ""
+    # Model chính + fallback chain khi 429 (mỗi model quota riêng)
     groq_llm_model: str = "llama-3.3-70b-versatile"
+    groq_llm_fallbacks: str = "llama3-70b-8192,llama-3.1-8b-instant"
     groq_stt_model: str = "whisper-large-v3"
     groq_base_url: str = "https://api.groq.com/openai/v1"
 
