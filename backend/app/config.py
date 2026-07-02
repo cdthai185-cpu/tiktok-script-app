@@ -34,12 +34,12 @@ class Settings(BaseSettings):
     # Để chuyển sang Anthropic: set llm_provider=anthropic và anthropic_api_key.
     llm_provider: str = "groq"
 
-    # Groq (free)
+    # Groq (free) — chọn model default có quota rộng
     groq_api_key: str = ""
-    # Model chính + fallback chain khi 429 (mỗi model quota riêng)
-    groq_llm_model: str = "llama-3.3-70b-versatile"
-    # Fallback: openai/gpt-oss-120b (Groq host OpenAI open-source, mạnh) → 8b-instant (nhẹ)
-    groq_llm_fallbacks: str = "openai/gpt-oss-120b,llama-3.1-8b-instant"
+    # openai/gpt-oss-120b: 120B params, mạnh, chất lượng tốt cho tiếng Việt, free
+    groq_llm_model: str = "openai/gpt-oss-120b"
+    # Fallback nếu default bị 429 hoặc offline
+    groq_llm_fallbacks: str = "llama-3.3-70b-versatile,llama-3.1-8b-instant"
     groq_stt_model: str = "whisper-large-v3"
     groq_base_url: str = "https://api.groq.com/openai/v1"
 
