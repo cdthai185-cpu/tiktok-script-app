@@ -12,12 +12,25 @@ router = APIRouter(tags=["generate"])
 
 class GenerateIn(BaseModel):
     input_text: str
+    duration_seconds: int = 60
+    style_tone: str = "default"
+    context_qa: str = ""
+
+
+class QuestionsIn(BaseModel):
+    input_text: str
+    duration_seconds: int = 60
 
 
 @router.post("/generate")
 def generate_standalone(payload: GenerateIn):
     try:
-        return generation_service.generate_variants(payload.input_text)
+        return generation_service.generate_variants(
+            payload.input_text,
+            duration_seconds=payload.duration_seconds,
+            tone=payload.style_tone,
+            context_qa=payload.context_qa,
+        )
     except GenerationError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -30,6 +43,38 @@ def generate_for_script(script_id: int, db: Session = Depends(get_db)):
     if not obj.input_text.strip():
         raise HTTPException(status_code=400, detail="Script chưa có mô tả (input_text trống).")
     try:
-        return generation_service.generate_variants(obj.input_text)
+        return generation_service.generate_variants(
+            obj.input_text,
+            duration_seconds=obj.duration_seconds or 60,
+            tone=obj.style_tone or "default",
+            context_qa=obj.context_qa or "",
+        )
+    except GenerationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/suggest_questions")
+def suggest_questions_standalone(payload: QuestionsIn):
+    try:
+        return generation_service.suggest_questions(
+            payload.input_text,
+            duration_seconds=payload.duration_seconds,
+        )
+    except GenerationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/scripts/{script_id}/suggest_questions")
+def suggest_questions_for_script(script_id: int, db: Session = Depends(get_db)):
+    obj = db.get(Script, script_id)
+    if not obj:
+        raise HTTPException(status_code=404, detail="Script not found")
+    if not obj.input_text.strip():
+        raise HTTPException(status_code=400, detail="Cần mô tả trước khi hỏi.")
+    try:
+        return generation_service.suggest_questions(
+            obj.input_text,
+            duration_seconds=obj.duration_seconds or 60,
+        )
     except GenerationError as e:
         raise HTTPException(status_code=400, detail=str(e))

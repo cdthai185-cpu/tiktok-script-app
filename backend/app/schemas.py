@@ -7,6 +7,9 @@ class ScriptBase(BaseModel):
     input_text: str = ""
     generated_text: str = ""
     status: str = "draft"
+    duration_seconds: int = 60
+    style_tone: str = "default"
+    context_qa: str = ""
 
 
 class ScriptCreate(ScriptBase):
@@ -18,6 +21,9 @@ class ScriptUpdate(BaseModel):
     input_text: str | None = None
     generated_text: str | None = None
     status: str | None = None
+    duration_seconds: int | None = None
+    style_tone: str | None = None
+    context_qa: str | None = None
 
 
 class ScriptOut(ScriptBase):

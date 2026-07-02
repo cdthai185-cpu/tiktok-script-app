@@ -1,9 +1,31 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-import { api, type Script, type GenerateResponse, type VariantAttempt } from "../../lib/api";
+import {
+  api,
+  type Script,
+  type GenerateResponse,
+  type VariantAttempt,
+  STYLE_TONE_OPTIONS,
+} from "../../lib/api";
+
+function estimateWords(duration: number, tone: string): { min: number; target: number; max: number } {
+  const wpm: Record<string, number> = {
+    default: 140, humor: 155, deep: 120, storytelling: 135, energetic: 170, selfmock: 145,
+  };
+  const rate = wpm[tone] ?? 140;
+  const target = Math.max(30, Math.round((duration * rate) / 60));
+  const delta = Math.max(10, Math.round(target * 0.15));
+  return { min: Math.max(20, target - delta), target, max: target + delta };
+}
+
+function formatDuration(s: number): string {
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return m > 0 ? `${m}p${r > 0 ? ` ${r}s` : ""}` : `${r}s`;
+}
 
 export default function EditScriptPage() {
   const params = useParams<{ id: string }>();
@@ -18,6 +40,11 @@ export default function EditScriptPage() {
   const [generating, setGenerating] = useState(false);
   const [genResult, setGenResult] = useState<GenerateResponse | null>(null);
 
+  // Q&A state
+  const [askingQ, setAskingQ] = useState(false);
+  const [questions, setQuestions] = useState<string[] | null>(null);
+  const [answers, setAnswers] = useState<string[]>([]);
+
   useEffect(() => {
     (async () => {
       try {
@@ -31,6 +58,11 @@ export default function EditScriptPage() {
     })();
   }, [id]);
 
+  const wordRange = useMemo(() => {
+    if (!script) return null;
+    return estimateWords(script.duration_seconds || 60, script.style_tone || "default");
+  }, [script?.duration_seconds, script?.style_tone]); // eslint-disable-line react-hooks/exhaustive-deps
+
   async function onSave() {
     if (!script) return;
     setSaving(true);
@@ -40,8 +72,61 @@ export default function EditScriptPage() {
         title: script.title,
         input_text: script.input_text,
         generated_text: script.generated_text,
+        duration_seconds: script.duration_seconds,
+        style_tone: script.style_tone,
+        context_qa: script.context_qa,
       });
       setScript(updated);
+      setSavedAt(new Date().toLocaleTimeString());
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function onAskQuestions() {
+    if (!script || !script.input_text.trim()) {
+      setErr("Cần có mô tả video trước khi hỏi.");
+      return;
+    }
+    setAskingQ(true);
+    setErr(null);
+    setQuestions(null);
+    try {
+      // Save duration trước khi hỏi (để backend dùng đúng)
+      await api.updateScript(id, {
+        duration_seconds: script.duration_seconds,
+      });
+      const res = await api.suggestQuestionsForScript(id);
+      setQuestions(res.questions);
+      // Init answers array cùng độ dài
+      const existing = script.context_qa || "";
+      setAnswers(res.questions.map(() => existing ? "" : ""));
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setAskingQ(false);
+    }
+  }
+
+  async function onSaveAnswers() {
+    if (!script || !questions) return;
+    const packed = questions
+      .map((q, i) => {
+        const a = (answers[i] || "").trim();
+        return a ? `Q${i + 1}: ${q}\nA: ${a}` : "";
+      })
+      .filter(Boolean)
+      .join("\n\n");
+
+    setSaving(true);
+    setErr(null);
+    try {
+      const updated = await api.updateScript(id, { context_qa: packed });
+      setScript(updated);
+      setQuestions(null);
+      setAnswers([]);
       setSavedAt(new Date().toLocaleTimeString());
     } catch (e) {
       setErr((e as Error).message);
@@ -55,6 +140,12 @@ export default function EditScriptPage() {
       setErr("Cần có mô tả video trước khi sinh kịch bản.");
       return;
     }
+    // Save trước để backend đọc duration/tone/context_qa mới nhất
+    await api.updateScript(id, {
+      duration_seconds: script.duration_seconds,
+      style_tone: script.style_tone,
+      context_qa: script.context_qa,
+    });
     setGenerating(true);
     setErr(null);
     setGenResult(null);
@@ -110,7 +201,7 @@ export default function EditScriptPage() {
         </div>
 
         <div>
-          <label className="block text-xs font-medium text-neutral-600 mb-1">Mô tả video (input)</label>
+          <label className="block text-xs font-medium text-neutral-600 mb-1">Mô tả thô video (input)</label>
           <textarea
             value={script.input_text}
             onChange={(e) => setScript({ ...script, input_text: e.target.value })}
@@ -119,10 +210,125 @@ export default function EditScriptPage() {
           />
         </div>
 
+        {/* === DURATION + TONE === */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-medium text-neutral-600 mb-1">
+              Thời lượng video (giây)
+            </label>
+            <input
+              type="number"
+              min={10}
+              max={600}
+              value={script.duration_seconds || 60}
+              onChange={(e) =>
+                setScript({ ...script, duration_seconds: Math.max(10, Number(e.target.value) || 60) })
+              }
+              className="w-full rounded-lg border border-neutral-300 px-3 py-3 text-base focus:outline-none focus:ring-2 focus:ring-neutral-900"
+            />
+            {wordRange && (
+              <div className="text-xs text-neutral-500 mt-1">
+                = {formatDuration(script.duration_seconds || 60)} · target ~
+                <span className="font-medium text-neutral-800">{wordRange.target} từ</span>{" "}
+                (chấp nhận {wordRange.min}-{wordRange.max})
+              </div>
+            )}
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-neutral-600 mb-1">Văn phong</label>
+            <select
+              value={script.style_tone || "default"}
+              onChange={(e) => setScript({ ...script, style_tone: e.target.value })}
+              className="w-full rounded-lg border border-neutral-300 px-3 py-3 text-base bg-white focus:outline-none focus:ring-2 focus:ring-neutral-900"
+            >
+              {STYLE_TONE_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+            <div className="text-xs text-neutral-500 mt-1">
+              {STYLE_TONE_OPTIONS.find((o) => o.value === (script.style_tone || "default"))?.hint}
+            </div>
+          </div>
+        </div>
+
+        {/* === Q&A === */}
+        <div className="rounded-xl border border-blue-200 bg-blue-50/40 p-3 sm:p-4">
+          <div className="flex items-center justify-between gap-3 flex-wrap mb-2">
+            <div>
+              <div className="font-medium text-sm">Hỏi thêm để bám sát video (tuỳ chọn)</div>
+              <div className="text-xs text-neutral-600">
+                App sẽ hỏi 5 câu cụ thể (mốc thời gian, cảm xúc, quote…). Anh trả lời càng chi tiết,
+                kịch bản càng sát cảnh quay.
+              </div>
+            </div>
+            <button
+              onClick={onAskQuestions}
+              disabled={askingQ || !script.input_text.trim()}
+              className="rounded-lg bg-blue-600 text-white px-4 py-2.5 text-sm font-medium disabled:opacity-40 w-full sm:w-auto"
+            >
+              {askingQ ? "Đang sinh câu hỏi…" : "🎯 Hỏi thêm để rõ"}
+            </button>
+          </div>
+
+          {questions && (
+            <div className="mt-3 space-y-3 border-t border-blue-200 pt-3">
+              {questions.map((q, i) => (
+                <div key={i}>
+                  <label className="block text-xs font-medium text-blue-900 mb-1">
+                    <span className="text-blue-700">Q{i + 1}.</span> {q}
+                  </label>
+                  <textarea
+                    value={answers[i] || ""}
+                    onChange={(e) => {
+                      const next = [...answers];
+                      next[i] = e.target.value;
+                      setAnswers(next);
+                    }}
+                    rows={2}
+                    placeholder="Trả lời ngắn…"
+                    className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              ))}
+              <div className="flex gap-2 flex-wrap">
+                <button
+                  onClick={onSaveAnswers}
+                  disabled={saving}
+                  className="rounded-lg bg-blue-700 text-white px-4 py-2 text-sm font-medium disabled:opacity-50"
+                >
+                  Dùng câu trả lời này
+                </button>
+                <button
+                  onClick={() => { setQuestions(null); setAnswers([]); }}
+                  className="rounded-lg border border-neutral-300 px-4 py-2 text-sm"
+                >
+                  Bỏ
+                </button>
+              </div>
+            </div>
+          )}
+
+          {!questions && script.context_qa && (
+            <div className="mt-2 text-xs text-neutral-600 border-t border-blue-200 pt-2">
+              <div className="font-medium mb-1">Context đã lưu:</div>
+              <pre className="whitespace-pre-wrap font-sans max-h-32 overflow-auto bg-white/60 rounded p-2 text-[11px]">
+                {script.context_qa}
+              </pre>
+              <button
+                onClick={() => setScript({ ...script, context_qa: "" })}
+                className="mt-1 text-xs text-red-600 hover:underline"
+              >
+                Xoá context
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* === GENERATE === */}
         <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-3 sm:p-4">
           <div className="flex items-center justify-between gap-3 flex-wrap mb-2">
             <div>
-              <div className="font-medium text-sm">Sinh kịch bản bằng AI</div>
+              <div className="font-medium text-sm">Sinh kịch bản chi tiết</div>
               <div className="text-xs text-neutral-500">
                 3 bản mỗi lần, mỗi bản tự chấm 9 tiêu chí. Mất ~30-60 giây.
               </div>
@@ -138,14 +344,16 @@ export default function EditScriptPage() {
 
           {generating && (
             <div className="text-xs text-neutral-500 mt-2">
-              Đang gọi Claude sinh + chấm critique. Đừng tắt tab.
+              Đang gọi Groq sinh + chấm critique. Đừng tắt tab.
             </div>
           )}
 
           {genResult && (
             <div className="mt-4 space-y-3">
               <div className="text-xs text-neutral-500">
-                Few-shot: {genResult.samples_used} mẫu. Click "Dùng bản này" để chèn vào ô bên dưới.
+                {genResult.provider}/{genResult.model} · few-shot {genResult.samples_used} mẫu ·
+                target {genResult.word_range?.target} từ
+                {genResult.context_qa_used ? " · có context Q&A" : ""}
               </div>
               {genResult.variants.map((v) => {
                 const att = v.chosen;

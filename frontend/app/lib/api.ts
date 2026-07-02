@@ -13,12 +13,32 @@ function detectBackend(): string {
 
 export const API_BASE = detectBackend();
 
+export type StyleTone =
+  | "default"
+  | "humor"
+  | "deep"
+  | "storytelling"
+  | "energetic"
+  | "selfmock";
+
+export const STYLE_TONE_OPTIONS: { value: StyleTone; label: string; hint: string }[] = [
+  { value: "default", label: "Mặc định (gần gũi 70/20/10)", hint: "Cân bằng, dùng cho hầu hết video" },
+  { value: "humor", label: "Hài nhẹ", hint: "50% gần gũi + 40% hài + 10% sâu" },
+  { value: "deep", label: "Sâu sắc", hint: "40% gần + 10% hài + 50% sâu, chậm, ngẫm" },
+  { value: "storytelling", label: "Kể chuyện", hint: "'Hôm nọ...', chi tiết hoá tình huống" },
+  { value: "energetic", label: "Sôi nổi, nhấn mạnh", hint: "Câu ngắn dồn dập, ngữ khí mạnh" },
+  { value: "selfmock", label: "Tự trào đậm", hint: "Chê mình rõ, thừa nhận cái dở" },
+];
+
 export type Script = {
   id: number;
   title: string;
   input_text: string;
   generated_text: string;
   status: string;
+  duration_seconds: number;
+  style_tone: string;
+  context_qa: string;
   created_at: string;
   updated_at: string;
 };
@@ -28,9 +48,16 @@ export type ScriptCreate = {
   input_text?: string;
   generated_text?: string;
   status?: string;
+  duration_seconds?: number;
+  style_tone?: string;
+  context_qa?: string;
 };
 
 export type ScriptUpdate = Partial<ScriptCreate>;
+
+export type SuggestQuestionsResponse = {
+  questions: string[];
+};
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
@@ -89,6 +116,12 @@ export type Variant = {
 export type GenerateResponse = {
   input_text: string;
   samples_used: number;
+  duration_seconds?: number;
+  style_tone?: string;
+  context_qa_used?: boolean;
+  word_range?: { min: number; target: number; max: number };
+  provider?: string;
+  model?: string;
   variants: Variant[];
 };
 
@@ -127,6 +160,8 @@ export const api = {
 
   generateForScript: (id: number) =>
     request<GenerateResponse>(`/scripts/${id}/generate`, { method: "POST" }),
+  suggestQuestionsForScript: (id: number) =>
+    request<SuggestQuestionsResponse>(`/scripts/${id}/suggest_questions`, { method: "POST" }),
   keysStatus: () => request<KeysStatus>("/keys/status"),
 
   // Upload audio cho Whisper. Trả về text transcribed.

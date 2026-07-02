@@ -8,19 +8,20 @@ from anthropic import Anthropic
 
 from ..config import settings, has_llm_key
 from . import samples_service
-from .prompts import build_system_prompt, build_user_prompt, build_critique_prompt
+from .prompts import (
+    build_system_prompt,
+    build_user_prompt,
+    build_critique_prompt,
+    build_questions_prompt,
+    word_range,
+)
 
 
 class GenerationError(RuntimeError):
     pass
 
 
-# === LLM client abstraction ===
-# Hỗ trợ Groq (default, free) và Anthropic (paid).
-# Cả 2 đều input system + user → output text.
-
-
-def _generate_text(system: str, user: str, max_tokens: int) -> str:
+def _generate_text(system: str, user: str, max_tokens: int, temperature: float = 0.8) -> str:
     if not has_llm_key():
         raise GenerationError(
             "API key chưa được set. "
@@ -37,7 +38,7 @@ def _generate_text(system: str, user: str, max_tokens: int) -> str:
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
-            temperature=0.8,
+            temperature=temperature,
         )
         return (resp.choices[0].message.content or "").strip()
 
@@ -62,50 +63,45 @@ def _word_count_vi(text: str) -> int:
     return len(re.findall(r"\S+", text))
 
 
-def _critique(script: str, input_text: str, profile_md: str) -> dict[str, Any]:
-    prompt = build_critique_prompt(script, input_text, profile_md)
+def _critique(
+    script: str,
+    input_text: str,
+    profile_md: str,
+    duration_seconds: int,
+    tone: str,
+) -> dict[str, Any]:
+    prompt = build_critique_prompt(script, input_text, profile_md, duration_seconds, tone)
     system_critic = (
         "Bạn là editor khắc nghiệt chấm kịch bản TikTok. "
         "Trả JSON đúng format, KHÔNG markdown code fence, KHÔNG kèm gì khác."
     )
     try:
-        raw = _generate_text(system_critic, prompt, max_tokens=1200)
+        raw = _generate_text(system_critic, prompt, max_tokens=1200, temperature=0.3)
     except APIError as e:
-        return {
-            "scores": {},
-            "overall_pass": False,
-            "summary": f"Critique API lỗi: {e}",
-        }
+        return {"scores": {}, "overall_pass": False, "summary": f"Critique API lỗi: {e}"}
 
-    raw = raw.strip()
-    m = re.search(r"\{.*\}", raw, re.DOTALL)
+    m = re.search(r"\{.*\}", raw.strip(), re.DOTALL)
     if not m:
-        return {
-            "scores": {},
-            "overall_pass": False,
-            "summary": f"Critique parse fail: {raw[:200]}",
-        }
+        return {"scores": {}, "overall_pass": False, "summary": f"Critique parse fail: {raw[:200]}"}
     try:
         return json.loads(m.group(0))
     except json.JSONDecodeError as e:
-        return {
-            "scores": {},
-            "overall_pass": False,
-            "summary": f"JSON decode fail: {e}",
-        }
+        return {"scores": {}, "overall_pass": False, "summary": f"JSON decode fail: {e}"}
 
 
 def _separate_script_and_hints(text: str) -> tuple[str, str]:
-    """Tách [GỢI Ý HÌNH] khỏi kịch bản."""
     m = re.search(r"\n\s*\[GỢI\s*Ý\s*HÌNH\]:?\s*\n?(.*)$", text, re.IGNORECASE | re.DOTALL)
     if m:
-        script = text[: m.start()].strip()
-        hints = m.group(1).strip()
-        return script, hints
+        return text[: m.start()].strip(), m.group(1).strip()
     return text.strip(), ""
 
 
-def generate_variants(input_text: str) -> dict[str, Any]:
+def generate_variants(
+    input_text: str,
+    duration_seconds: int = 60,
+    tone: str = "default",
+    context_qa: str = "",
+) -> dict[str, Any]:
     if not input_text.strip():
         raise GenerationError("Mô tả video trống.")
 
@@ -113,6 +109,7 @@ def generate_variants(input_text: str) -> dict[str, Any]:
     samples = samples_service.load_samples()
 
     results: list[dict[str, Any]] = []
+    wmin, wtarget, wmax = word_range(duration_seconds, tone)
 
     for variant_index in range(settings.generation_variants):
         regens_left = settings.critique_max_regens
@@ -120,15 +117,15 @@ def generate_variants(input_text: str) -> dict[str, Any]:
         chosen: dict[str, Any] | None = None
 
         while True:
-            system = build_system_prompt(profile_md, samples)
-            user = build_user_prompt(input_text, variant_index)
+            system = build_system_prompt(profile_md, samples, duration_seconds, tone)
+            user = build_user_prompt(input_text, context_qa, variant_index)
             try:
                 raw = _generate_text(system, user, max_tokens=settings.llm_max_tokens)
             except APIError as e:
                 raise GenerationError(f"LLM API lỗi: {e}") from e
 
             script, hints = _separate_script_and_hints(raw)
-            critique = _critique(script, input_text, profile_md)
+            critique = _critique(script, input_text, profile_md, duration_seconds, tone)
             wc = _word_count_vi(script)
 
             attempt = {
@@ -153,8 +150,40 @@ def generate_variants(input_text: str) -> dict[str, Any]:
 
     return {
         "input_text": input_text,
+        "duration_seconds": duration_seconds,
+        "style_tone": tone,
+        "context_qa_used": bool(context_qa.strip()),
+        "word_range": {"min": wmin, "target": wtarget, "max": wmax},
         "samples_used": len(samples),
         "provider": settings.llm_provider,
         "model": settings.groq_llm_model if settings.llm_provider == "groq" else settings.claude_model,
         "variants": results,
     }
+
+
+def suggest_questions(input_text: str, duration_seconds: int = 60) -> dict[str, Any]:
+    """Sinh 5 câu hỏi cụ thể cho video để user trả lời trước khi sinh kịch bản."""
+    if not input_text.strip():
+        raise GenerationError("Mô tả video trống.")
+
+    prompt = build_questions_prompt(input_text, duration_seconds)
+    system_q = (
+        "Bạn giúp user làm content TikTok chuẩn bị kịch bản. "
+        "Sinh câu hỏi CỤ THỂ SÁT video user mô tả. Trả JSON đúng format."
+    )
+    try:
+        raw = _generate_text(system_q, prompt, max_tokens=800, temperature=0.6)
+    except APIError as e:
+        raise GenerationError(f"LLM API lỗi: {e}") from e
+
+    m = re.search(r"\{.*\}", raw.strip(), re.DOTALL)
+    if not m:
+        return {"questions": [], "raw": raw[:500]}
+    try:
+        data = json.loads(m.group(0))
+        questions = data.get("questions", [])
+        # Sanitize: chỉ giữ string non-empty
+        questions = [str(q).strip() for q in questions if str(q).strip()][:6]
+        return {"questions": questions}
+    except json.JSONDecodeError:
+        return {"questions": [], "raw": raw[:500]}
