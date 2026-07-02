@@ -48,10 +48,10 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     whisper_model: str = "whisper-1"
 
-    # Generation control
+    # Generation control (tối ưu cho Groq free 100k tokens/day)
     llm_max_tokens: int = 1500
     generation_variants: int = 3
-    critique_max_regens: int = 2
+    critique_max_regens: int = 1  # 1 regen thay vì 2 → tiết kiệm ~30% quota
 
 
 settings = Settings()
