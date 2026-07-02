@@ -30,6 +30,16 @@ export const STYLE_TONE_OPTIONS: { value: StyleTone; label: string; hint: string
   { value: "selfmock", label: "Tự trào đậm", hint: "Chê mình rõ, thừa nhận cái dở" },
 ];
 
+export type VideoType = "product" | "vlog" | "knowledge" | "case" | "opinion";
+
+export const VIDEO_TYPE_OPTIONS: { value: VideoType; label: string; ratio: string }[] = [
+  { value: "knowledge", label: "Kiến thức thiết kế bếp / phòng tắm", ratio: "50% kiến thức + 25% ví dụ + 15% cảm xúc + 10% thông tin" },
+  { value: "product", label: "Giới thiệu sản phẩm", ratio: "40% kiến thức + 30% trải nghiệm + 20% thông tin + 10% cảm xúc" },
+  { value: "vlog", label: "Vlog / POV làm việc", ratio: "40% cảm xúc + 30% trải nghiệm + 20% định vị + 10% kiến thức" },
+  { value: "case", label: "Case thật (kể chuyện thực tế)", ratio: "40% câu chuyện + 25% cảm xúc + 20% bài học + 15% thông tin" },
+  { value: "opinion", label: "Phản biện / góc nhìn cá nhân", ratio: "40% quan điểm + 30% lập luận + 20% ví dụ + 10% cảm xúc" },
+];
+
 export type Script = {
   id: number;
   title: string;
@@ -39,6 +49,9 @@ export type Script = {
   duration_seconds: number;
   style_tone: string;
   context_qa: string;
+  video_type: string;
+  context_scene: string;
+  main_message: string;
   created_at: string;
   updated_at: string;
 };
@@ -51,6 +64,9 @@ export type ScriptCreate = {
   duration_seconds?: number;
   style_tone?: string;
   context_qa?: string;
+  video_type?: string;
+  context_scene?: string;
+  main_message?: string;
 };
 
 export type ScriptUpdate = Partial<ScriptCreate>;
@@ -109,6 +125,7 @@ export type VariantAttempt = {
 
 export type Variant = {
   variant_index: number;
+  variant_name?: string;
   attempts: VariantAttempt[];
   chosen: VariantAttempt | null;
 };
@@ -118,7 +135,11 @@ export type GenerateResponse = {
   samples_used: number;
   duration_seconds?: number;
   style_tone?: string;
+  video_type?: string;
+  video_type_label?: string;
   context_qa_used?: boolean;
+  context_scene_used?: boolean;
+  main_message_used?: boolean;
   word_range?: { min: number; target: number; max: number };
   provider?: string;
   model?: string;

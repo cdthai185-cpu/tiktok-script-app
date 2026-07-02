@@ -91,8 +91,9 @@ def _critique(
     profile_md: str,
     duration_seconds: int,
     tone: str,
+    video_type: str = "knowledge",
 ) -> dict[str, Any]:
-    prompt = build_critique_prompt(script, input_text, profile_md, duration_seconds, tone)
+    prompt = build_critique_prompt(script, input_text, profile_md, duration_seconds, tone, video_type)
     system_critic = (
         "Bạn là editor khắc nghiệt chấm kịch bản TikTok. "
         "Trả JSON đúng format, KHÔNG markdown code fence, KHÔNG kèm gì khác."
@@ -123,12 +124,17 @@ def generate_variants(
     duration_seconds: int = 60,
     tone: str = "default",
     context_qa: str = "",
+    video_type: str = "knowledge",
+    context_scene: str = "",
+    main_message: str = "",
 ) -> dict[str, Any]:
     if not input_text.strip():
         raise GenerationError("Mô tả video trống.")
 
     profile_md = samples_service.profile_text()
     samples = samples_service.load_samples()
+
+    from .prompts import VARIANT_MODES, VIDEO_TYPE_RATIOS
 
     results: list[dict[str, Any]] = []
     wmin, wtarget, wmax = word_range(duration_seconds, tone)
@@ -137,9 +143,15 @@ def generate_variants(
         regens_left = settings.critique_max_regens
         attempts: list[dict[str, Any]] = []
         chosen: dict[str, Any] | None = None
+        mode = VARIANT_MODES[variant_index] if variant_index < len(VARIANT_MODES) else VARIANT_MODES[0]
 
         while True:
-            system = build_system_prompt(profile_md, samples, duration_seconds, tone)
+            system = build_system_prompt(
+                profile_md, samples, duration_seconds, tone,
+                video_type=video_type,
+                context_scene=context_scene,
+                main_message=main_message,
+            )
             user = build_user_prompt(input_text, context_qa, variant_index)
             try:
                 raw = _generate_text(system, user, max_tokens=settings.llm_max_tokens)
@@ -147,7 +159,7 @@ def generate_variants(
                 raise GenerationError(f"LLM API lỗi: {e}") from e
 
             script, hints = _separate_script_and_hints(raw)
-            critique = _critique(script, input_text, profile_md, duration_seconds, tone)
+            critique = _critique(script, input_text, profile_md, duration_seconds, tone, video_type)
             wc = _word_count_vi(script)
 
             attempt = {
@@ -166,6 +178,7 @@ def generate_variants(
 
         results.append({
             "variant_index": variant_index,
+            "variant_name": mode["name"],
             "attempts": attempts,
             "chosen": chosen,
         })
@@ -174,7 +187,11 @@ def generate_variants(
         "input_text": input_text,
         "duration_seconds": duration_seconds,
         "style_tone": tone,
+        "video_type": video_type,
+        "video_type_label": VIDEO_TYPE_RATIOS.get(video_type, VIDEO_TYPE_RATIOS["knowledge"])["label"],
         "context_qa_used": bool(context_qa.strip()),
+        "context_scene_used": bool(context_scene.strip()),
+        "main_message_used": bool(main_message.strip()),
         "word_range": {"min": wmin, "target": wtarget, "max": wmax},
         "samples_used": len(samples),
         "provider": settings.llm_provider,
@@ -183,12 +200,12 @@ def generate_variants(
     }
 
 
-def suggest_questions(input_text: str, duration_seconds: int = 60) -> dict[str, Any]:
+def suggest_questions(input_text: str, duration_seconds: int = 60, video_type: str = "knowledge") -> dict[str, Any]:
     """Sinh 5 câu hỏi cụ thể cho video để user trả lời trước khi sinh kịch bản."""
     if not input_text.strip():
         raise GenerationError("Mô tả video trống.")
 
-    prompt = build_questions_prompt(input_text, duration_seconds)
+    prompt = build_questions_prompt(input_text, duration_seconds, video_type)
     system_q = (
         "Bạn giúp user làm content TikTok chuẩn bị kịch bản. "
         "Sinh câu hỏi CỤ THỂ SÁT video user mô tả. Trả JSON đúng format."

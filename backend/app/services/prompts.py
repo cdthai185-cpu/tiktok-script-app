@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 # =============================================================
-# TỐC ĐỘ NÓI (từ / phút)
+# TỐC ĐỘ NÓI
 # =============================================================
 BASE_WPM = 140
 TONE_WPM = {
@@ -15,7 +15,6 @@ TONE_WPM = {
 
 
 def word_range(duration_seconds: int, tone: str = "default") -> tuple[int, int, int]:
-    """Trả (min, target, max) số từ tiếng Việt. Range ±15% quanh target."""
     wpm = TONE_WPM.get(tone, BASE_WPM)
     target = max(30, int(duration_seconds * wpm / 60))
     delta = max(10, int(target * 0.15))
@@ -23,357 +22,446 @@ def word_range(duration_seconds: int, tone: str = "default") -> tuple[int, int, 
 
 
 # =============================================================
-# QUY CHUẨN VĂN PHONG — mỗi tone có TÍNH CHẤT + CÁCH TẠO + VÍ DỤ
+# LOẠI VIDEO — mỗi loại có tỷ lệ 5 lớp khác nhau
+# =============================================================
+VIDEO_TYPE_RATIOS = {
+    "product": {
+        "label": "Giới thiệu sản phẩm",
+        "ratio": "**40% kiến thức sử dụng + 30% trải nghiệm thật + 20% thông tin sản phẩm + 10% cảm xúc**",
+        "guide": (
+            "KHÔNG đọc catalogue. Mỗi chi tiết sản phẩm nhắc đến phải kèm giải thích "
+            "VÌ SAO nó ảnh hưởng tới việc dùng hằng ngày. Ví dụ: 'cái này không phải để "
+            "khoe, mà vì em từng gặp khách xong 3 tháng phải đổi vì...'"
+        ),
+    },
+    "vlog": {
+        "label": "Vlog/POV làm việc",
+        "ratio": "**40% cảm xúc/bối cảnh + 30% trải nghiệm thật + 20% định vị cá nhân + 10% kiến thức**",
+        "guide": (
+            "KHÔNG giải thích quá nhiều. Phải có cảm giác đời thật, đang làm việc thật. "
+            "Chi tiết nhỏ (áo em ướt, cà phê nguội, khách đến muộn) — cái đó bán được sự thật."
+        ),
+    },
+    "knowledge": {
+        "label": "Kiến thức thiết kế bếp / phòng tắm",
+        "ratio": "**50% kiến thức + 25% ví dụ thực tế + 15% cảm xúc chọn sai/dùng khổ + 10% thông tin**",
+        "guide": (
+            "Phải DỄ HIỂU, có NGUYÊN TẮC nhớ được (kiểu 'em luôn xem X trước Y'). "
+            "Kiến thức đi kèm 1 ví dụ chọn sai xong hối hận."
+        ),
+    },
+    "case": {
+        "label": "Case thật (kể chuyện thực tế)",
+        "ratio": "**40% câu chuyện + 25% cảm xúc + 20% bài học/kiến thức + 15% thông tin**",
+        "guide": (
+            "KHÔNG kể lan man. Phải có DIỄN BIẾN (đầu - giữa - cuối) và BÀI HỌC ngầm ở cuối. "
+            "Nhân vật cụ thể: khách A, đồng nghiệp B, sếp C. Địa điểm cụ thể."
+        ),
+    },
+    "opinion": {
+        "label": "Phản biện / góc nhìn cá nhân",
+        "ratio": "**40% quan điểm riêng + 30% lập luận + 20% ví dụ + 10% cảm xúc**",
+        "guide": (
+            "Phải SẮC — nói thẳng góc nhìn khác biệt. Nhưng KHÔNG cực đoan (không đánh đối thủ, "
+            "không nói ai đó sai 100%). Lập luận theo kiểu 'em thấy phần đông nghĩ X, "
+            "nhưng thực tế em gặp là Y'."
+        ),
+    },
+}
+
+
+# =============================================================
+# 5 LỚP NỘI DUNG (bắt buộc dệt vào nhau, không phải 5 đoạn tách)
+# =============================================================
+FIVE_LAYERS = """\
+# 5 LỚP NỘI DUNG BẮT BUỘC (dệt vào nhau, KHÔNG phải 5 đoạn tách biệt)
+
+## Lớp 1 — THÔNG TIN
+Bối cảnh, sản phẩm, người nghe, tình huống, chi tiết BẮT BUỘC phải nhắc từ dàn ý user cung cấp.
+⚠️ CẤM bịa thêm: thông số kỹ thuật, con số, chính sách, tên khách hàng, câu chuyện MỚI.
+
+## Lớp 2 — KIẾN THỨC
+Người xem xem xong HỌC ĐƯỢC gì? Trả lời rõ.
+- Dễ hiểu, không hàn lâm
+- Không giống sách giáo khoa
+- Có nguyên tắc nhớ được nếu có thể
+
+## Lớp 3 — CẢM XÚC
+Phải tạo ≥1 trong các cảm xúc sau:
+- **Tò mò** ("cái gì mà...?")
+- **Bất ngờ** ("hoá ra là vậy!")
+- **Đồng cảm** ("mình cũng từng...")
+- **Tiếc tiền** ("giá mà biết sớm...")
+- **Sợ chọn sai** ("chết em cũng đang định làm thế")
+- **"À hoá ra"** (bừng ngộ)
+
+KHÔNG viết khô như catalogue. KHÔNG chỉ nói ĐÚNG, phải nói sao cho người xem MUỐN NGHE TIẾP.
+
+## Lớp 4 — TRẢI NGHIỆM THẬT
+Ngữ cảnh thực tế được ưu tiên:
+- Showroom (cảnh khách vào, khách xem, khách hỏi)
+- Công trình (đang lắp, đang bàn giao, đang sửa)
+- Cảnh mở máy, cảnh tư vấn, cảnh kiểm tra sản phẩm
+
+⚠️ Nếu dàn ý CHƯA CÓ trải nghiệm thật → chỉ gợi NHẸ, KHÔNG bịa case mới.
+Ví dụ được phép: "kiểu em hay gặp..." (chung chung)
+Cấm: "hôm qua chị Lan ở dự án Vinhomes..." (bịa tên/địa điểm cụ thể).
+
+## Lớp 5 — QUAN ĐIỂM RIÊNG (BẮT BUỘC có ≥1 câu)
+Góc nhìn riêng của Cao Duy Thái — không generic, không ai cũng nói được.
+Mẫu tham khảo (không copy nguyên):
+- "Em luôn xem vật liệu trước khi xem tính năng."
+- "Cái này không phải lỗi thiết bị, mà là lỗi thiết kế."
+- "Đắt chưa chắc dùng sướng, đúng mới dùng sướng."
+- "Em thà bán ít mà khách quay lại, hơn bán nhiều mà khách gọi bảo hành."
+
+Quan điểm phải nghe ra được từ 1 người LÀM THẬT trong ngành, không phải marketing.
+"""
+
+
+# =============================================================
+# CÔNG THỨC + 6 CÂU TỰ CHECK
+# =============================================================
+FORMULA_AND_CHECK = """\
+# CÔNG THỨC PHÁT TRIỂN DÀN Ý NGẮN
+
+`Hook gây tò mò → Bối cảnh thật → Vấn đề/hiểu lầm → Kiến thức giải thích →
+Ví dụ/trải nghiệm → Cảm xúc hoặc hậu quả → Quan điểm riêng → Câu chốt đáng nhớ.`
+
+⚠️ KHÔNG viết dài bằng câu sáo rỗng. Mỗi câu thêm PHẢI có nhiệm vụ:
+- Làm rõ thông tin, HOẶC
+- Tăng kiến thức, HOẶC
+- Tăng cảm xúc, HOẶC
+- Tăng độ tin cậy, HOẶC
+- Làm câu văn hay hơn (nhịp / bất ngờ / hay chốt)
+
+# 6 CÂU TỰ HỎI TRƯỚC KHI VIẾT (ngầm, KHÔNG show ra)
+
+1. Video này người xem xem vì TÒ MÒ điều gì?
+2. Người xem xem xong HỌC ĐƯỢC điều gì?
+3. ĐOẠN NÀO chứng minh Cao Duy Thái LÀM THẬT, không nói suông?
+4. CẢM XÚC CHÍNH của video là gì (tò mò/bất ngờ/hài nhẹ/tiếc tiền/sợ sai/tin tưởng)?
+5. QUAN ĐIỂM RIÊNG của Thái nằm ở CÂU NÀO?
+6. CÂU CHỐT nào khiến người xem NHỚ LẠI video này?
+
+⚠️ Nếu không trả lời được rõ ràng cả 6 → kịch bản NHẠT. Viết lại.
+"""
+
+
+# =============================================================
+# QUY CHUẨN VĂN PHONG (tone) — chi tiết + ví dụ
 # =============================================================
 TONE_INSTRUCTIONS = {
     "default": """\
-**VĂN PHONG: MẶC ĐỊNH — gần gũi 70/20/10**
+**VĂN PHONG: MẶC ĐỊNH — 70/20/10**
 
-Tỷ lệ:
-- 70% gần gũi đời thường
-- 20% hài nhẹ
-- 10% sâu sắc
+Tỷ lệ: 70% gần gũi + 20% hài nhẹ + 10% sâu sắc
 
-Đặc trưng phải có:
+Đặc trưng:
 - Câu ngắn, có nhịp thở, nói miệng như đang vlog tại chỗ
-- Kể chuyện thật, đôi khi than thở vui ("Ôi giời ơi, hôm nọ em...")
-- Tự trào nhẹ ("Em cũng đâu có giỏi lắm...")
+- Kể chuyện thật, đôi khi than thở vui
+- Tự trào nhẹ
 - Câu chuyển tự nhiên ("Xong cái là...", "Rồi tự nhiên...")
 """,
 
     "humor": """\
 **VĂN PHONG: HÀI NHẸ — 50/40/10**
 
-Tỷ lệ:
-- 50% gần gũi
-- **40% HÀI NHẸ** ← ép mạnh cái này
-- 10% sâu sắc
+Tỷ lệ: 50% gần gũi + **40% HÀI NHẸ** + 10% sâu
 
-HÀI PHẢI LÀ HÀI THẬT SỰ, không phải nói tone thường mà gọi là hài.
+HÀI PHẢI LÀ HÀI THẬT (không chỉ dán nhãn). Chọn ≥2 kỹ thuật:
+- Tự trào bản thân
+- So sánh bất ngờ ("cái showroom trông như...")
+- Cường điệu vừa phải ("em đứng hình 3 giây")
+- Than thở vui ("ối giời ơi", "vãi thật")
+- Tình huống oái oăm đời thường
+- Câu chốt bất ngờ
 
-Cách tạo hài (chọn ≥2 cái để dùng):
-- **Tự trào bản thân**: cười cái dở của chính mình
-- **So sánh bất ngờ**: "Cái showroom trông như...", "Em tưởng đơn giản như ăn bún, ai dè..."
-- **Cường điệu vừa phải** (không lố): "Em đứng hình mất 3 giây", "Em vãi cả mồ hôi hột"
-- **Than thở vui**: "Ối giời ơi", "Trời đất quỷ thần", "Vãi thật sự"
-- **Tình huống oái oăm đời thường**: chi tiết nhỏ mà buồn cười
-- **Câu chốt bất ngờ**: đoạn đang serious xong bẻ lái sang hài
+CẤM: đùa vô duyên, lóng nhạy cảm, mock người khác, tục.
 
-CẤM: đùa cợt vô duyên, tiếng lóng nhạy cảm, mock người khác, tục tĩu, chọc ngoáy vùng miền/giới tính.
-
-Ví dụ mẫu:
-"Ôi các bác biết không, sáng nay em vào showroom tưởng ngon lành cành đào, ai dè bị khách hỏi 1 câu em đứng hình mất 3 giây. Đứng hình xong em còn cố cười nữa chứ, kiểu ừ đúng rồi anh, đúng ghê. Đúng cái gì em cũng không biết luôn."
+Ví dụ: "Sáng nay em vào showroom tưởng ngon lành, ai dè khách hỏi 1 câu em đứng hình 3 giây. Đứng hình xong em còn cố cười, kiểu 'ừ anh đúng ghê' — đúng cái gì em cũng chưa biết luôn."
 """,
 
     "deep": """\
 **VĂN PHONG: SÂU SẮC — 40/10/50**
 
-Tỷ lệ:
-- 40% gần gũi
-- 10% hài (đủ cho không nặng nề)
-- **50% SÂU SẮC** ← ép mạnh cái này
+Tỷ lệ: 40% gần gũi + 10% hài + **50% SÂU**
 
 Cách tạo sâu:
-- Kể 1 TÌNH HUỐNG đời thường cụ thể → RÚT lát cắt về nghề/đời (ngầm, không nói thẳng)
-- Nhịp câu **CHẬM hơn**, có khoảng lặng (dấu phẩy nhiều, xuống dòng ẩn)
-- Câu hỏi mở SUY NGẪM (không phải câu hỏi kéo tương tác)
-- Ẩn dụ nhẹ từ chi tiết đời thường (không sáo rỗng)
+- Kể 1 tình huống đời thường → rút lát cắt về nghề/đời NGẦM
+- Nhịp CHẬM, có khoảng lặng
+- Câu hỏi mở SUY NGẪM
+- Ẩn dụ nhẹ từ chi tiết đời (không sáo rỗng)
 
-CẤM:
-- Triết lý cao siêu ("chân lý cuộc sống")
-- Dạy đời ("các bác cần phải hiểu...")
-- Câu kết luận đóng ("vậy nên là...", "tóm lại...")
-- Ngôn ngữ giáo trình / bài văn
+CẤM: triết lý cao siêu, dạy đời, câu kết luận đóng.
 
-Ví dụ mẫu:
-"Có những cái showroom em nghĩ nó đẹp. Mấy năm sau nhìn lại mới thấy, hồi đó mình còn non thật. Không phải cái showroom xấu đi, mà mắt em nó khác rồi. Không biết các bác có bao giờ nhìn lại cái mình từng tự hào, xong tự thấy... lạ không?"
+Ví dụ: "Có những showroom em nghĩ nó đẹp. Mấy năm sau nhìn lại mới thấy, hồi đó mình non thật. Không phải showroom xấu đi, mà mắt em nó khác rồi."
 """,
 
     "storytelling": """\
-**VĂN PHONG: KỂ CHUYỆN — cấu trúc theo mốc thời gian**
+**VĂN PHONG: KỂ CHUYỆN**
 
-BẮT BUỘC:
-- MỞ đầu bằng cụm dẫn thời gian: "Hôm nọ...", "Có lần...", "Nhớ hồi năm ngoái...", "Tuần trước..."
-- Có NHÂN VẬT cụ thể (khách A, đồng nghiệp B, chị lễ tân, anh kỹ thuật)
-- Có ĐỊA ĐIỂM cụ thể (showroom quận X, dự án Y, quán cà phê gần đó)
-- Có TÌNH HUỐNG chi tiết theo trình tự thời gian
-- Có PHẢN ỨNG của các nhân vật
+BẮT BUỘC: mở "Hôm nọ...", "Có lần...", "Nhớ hồi...".
+- Nhân vật cụ thể + địa điểm cụ thể + trình tự thời gian
+- Kể như ngồi kể cho bạn nghe cà phê
+- Có đoạn chậm, có "bùm cái"
 
-Nhịp:
-- Kể như đang ngồi kể cho bạn nghe uống cà phê
-- Có đoạn "chậm lại", có đoạn "bùm cái"
-- Chi tiết nhỏ nhưng đắt (không dài dòng)
+CẤM: kể chuyện fake / lê thê không điểm nhấn.
 
-CẤM: kể chuyện fake / hư cấu quá đà, kể mà không có điểm nhấn, kể lê thê không cắt.
-
-Ví dụ mẫu mở đầu:
-"Hôm nọ em đang tư vấn cho một anh khách ở dự án Vinhomes, anh này hỏi 1 câu về cái máy hút mùi, em trả lời xong anh nhìn em nửa giây rồi bảo... chú ơi chú tư vấn kiểu này không được đâu."
+Ví dụ mở: "Hôm nọ em tư vấn cho anh khách ở Vinhomes, anh hỏi em 1 câu về máy hút mùi, em trả lời xong anh nhìn nửa giây rồi bảo... chú tư vấn kiểu này không được đâu."
 """,
 
     "energetic": """\
 **VĂN PHONG: SÔI NỔI, NHẤN MẠNH**
 
-Đặc trưng:
-- **Câu NGẮN, dồn dập**. Có câu chỉ 2-3 từ.
-- **Ngữ khí MẠNH**: "Nói thật luôn", "Vãi", "Trời ơi", "Cực kỳ", "Không đùa nhé"
-- **Nhắc lại** để nhấn: "3 tháng. Chỉ 3 tháng thôi."
-- Có moment **CAO TRÀO** rõ ràng
-- Điểm cảm xúc chuyển đột ngột
+- Câu NGẮN, dồn dập. Có câu 2-3 từ.
+- Ngữ khí MẠNH: "Nói thật luôn", "Vãi", "Trời ơi"
+- Nhắc lại để nhấn: "3 tháng. Chỉ 3 tháng thôi."
+- Có moment CAO TRÀO
 
-Cách viết:
-- Chia câu ngắn hơn bình thường (Groq thường viết dài — ép ngắn lại)
-- Dấu chấm nhiều
-- Có chỗ "cứng miệng" 1 vài từ khoá
+CẤM: hô hào rỗng.
 
-CẤM:
-- Hô hào rỗng ("cùng nhau...", "hãy...")
-- La lối không có nội dung
-- Nhấn mạnh mà không có chi tiết
-
-Ví dụ mẫu:
-"Cái này. Thật sự luôn. Em không nghĩ nó fail nhanh vậy. Các bác biết không? 3 tháng. Chỉ 3 tháng thôi. Cái van em vừa lắp cho khách, 3 tháng bung. Vãi thật."
+Ví dụ: "Cái này. Thật sự luôn. Em không nghĩ nó fail nhanh vậy. 3 tháng. Chỉ 3 tháng."
 """,
 
     "selfmock": """\
 **VĂN PHONG: TỰ TRÀO ĐẬM**
 
 BẮT BUỘC:
-- MỞ đầu = THỪA NHẬN CÁI DỞ / SAI / NGU của bản thân ngay 1-2 câu đầu
-- Chê chính mình XUYÊN SUỐT (không chỉ mở đầu)
-- Không đổ lỗi cho ai khác trong câu chuyện
-- CUỐI kịch bản mới NGẦM rút ra bài học từ trải nghiệm (không nói "bài học là...")
+- Mở đầu = thừa nhận cái DỞ / SAI của bản thân ngay 1-2 câu đầu
+- Chê chính mình xuyên suốt
+- Không đổ lỗi cho ai khác
+- CUỐI mới NGẦM rút ra bài học (không nói "bài học là...")
 
-Cách viết:
-- Dùng động từ mạnh khi chê mình: "em ngu", "em xịt", "em bó tay", "em vãi cả sợ"
-- Chi tiết cụ thể cái sai (không sai chung chung)
-- Có moment "à ra thế" ở cuối — nhưng nhẹ nhàng, không đúc kết to tát
-
-CẤM:
-- Tự trào giả tạo (tỏ ra khiêm tốn để khoe thành công)
-- Sến súa, than vãn quá đà
-- Chê xong lại tự bào chữa
-
-Ví dụ mẫu:
-"Em làm ngành thiết bị bếp 6 năm rồi. Vậy mà hôm qua em còn tư vấn sai cho khách. Sai xong khách chửi. Chửi xong em vẫn không hiểu mình sai chỗ nào — vãi cả não. Về nhà em ngồi ngẫm mất 2 tiếng mới nhận ra..."
+Ví dụ: "Em làm ngành 6 năm rồi. Vậy mà hôm qua em còn tư vấn sai. Sai xong khách chửi. Chửi xong em vẫn không hiểu mình sai chỗ nào — vãi cả não."
 """,
 }
 
 
 # =============================================================
-# QUY CHUẨN CHUNG (mọi tone đều theo)
+# QUY CHUẨN CHUNG
 # =============================================================
 CORE_RULES = """\
-Bạn là copywriter viết kịch bản TikTok cho nhân vật trong HỒ SƠ PHONG CÁCH dưới đây.
+Bạn là copywriter viết kịch bản TikTok cho nhân vật trong HỒ SƠ PHONG CÁCH.
 
 # XƯNG HÔ (BẮT BUỘC)
-Tự xưng "em". Gọi người xem "các bác". Cấm tuyệt đối: "tôi/bạn", "tao/mày", "anh em", "mọi người".
+Tự xưng "em". Gọi người xem "các bác". Cấm: "tôi/bạn", "tao/mày", "anh em", "mọi người".
 
-# 5 BƯỚC XỬ LÝ DÀN Ý THÔ CỦA USER (làm ngầm, KHÔNG viết ra)
+# XỬ LÝ DÀN Ý THÔ CỦA USER
+User đưa dàn ý thô / voice-to-text chưa mượt. Nhiệm vụ:
+1. GIỮ ý gốc — không đổi thông điệp, không thêm ý mới sai thực tế
+2. LỌC ý — chính giữ, phụ rút, lặp bỏ, mờ làm rõ
+3. BIẾN thành văn nói — câu ngắn, nhịp nghỉ, chuyển ý tự nhiên
+4. NÂNG cấp nhẹ — hook mạnh hơn, chuyển mượt, ví dụ ngắn, chốt sắc
+5. BÁO nếu thiếu — cuối kịch bản ghi `[Cần bổ sung: ...]`
 
-User thường đưa **dàn ý thô, lời nói rời rạc hoặc bản voice-to-text chưa mượt**.
-Nhiệm vụ: biến dàn ý → **kịch bản văn nói hoàn chỉnh**.
-KHÔNG biến thành bài văn. KHÔNG đổi thông điệp. KHÔNG thêm ý mới sai thực tế.
+CẤM THÊM: thông tin kỹ thuật user chưa cấp, tên thương hiệu ngoài dàn ý, con số/chính sách bịa, câu chuyện mới.
 
-**Bước 1 — GIỮ Ý GỐC:**
-Giữ đúng tinh thần, thứ tự logic, quan điểm chính của user.
-Chỉ sửa lỗi lặp/nói vòng/sai nhịp cho mượt. KHÔNG đổi "ý của Thái" thành "ý của AI".
+# CẤU TRÚC
+Hook (3s) → Tình huống/câu chuyện → Thông điệp ngầm → Kết (câu hỏi ngược HOẶC câu suy ngẫm)
 
-**Bước 2 — LỌC Ý (ngầm):**
-- Ý CHÍNH bắt buộc giữ
-- Ý PHỤ rút gọn
-- Ý LẶP bỏ
-- Ý CHƯA RÕ làm mềm
+# BẮT BUỘC
+- ≥1 câu HỎI NGƯỢC cho khán giả (kéo tương tác)
+- Cài tự nhiên ≥1 KEYWORD: Cai Duy Thái · 24 tuổi · 6 năm kinh nghiệm · Giám đốc ASKO Việt Nam · thiết bị bếp · thiết bị phòng tắm
 
-**Bước 3 — BIẾN THÀNH VĂN NÓI:**
-Kịch bản phải nghe như 1 người thật đang nói.
-- Câu ngắn, có nhịp nghỉ, có đoạn nhấn
-- Câu chuyển ý tự nhiên ("Xong cái là...", "Nhưng mà...", "Rồi tự nhiên...")
-- KHÔNG viết kiểu bài báo/giáo trình/ngôn ngữ quá sạch giả tạo
+# LỖI TUYỆT ĐỐI CẤM
 
-**Bước 4 — NÂNG CẤP NHẸ (được phép thêm):**
-- Hook mạnh hơn cho 3 giây đầu
-- Câu chuyển mượt hơn
-- Ví dụ ngắn cho dễ hiểu
-- Câu chốt sắc hơn
-- Một chút hài nhẹ hoặc cà khịa nhẹ NẾU HỢP NGỮ CẢNH (không ép hài khi không cần)
+❌ Mất tính đời thực (biến hư cấu / văn vẻ)
+❌ Giọng MC / nhà báo / giáo viên
+❌ Thêm info không có trong dàn ý
+❌ Kéo dài chỉ đủ chữ (padding)
+❌ Mở bằng định nghĩa khô ("Thiết bị bếp là...")
+❌ Dạy đời / tổng kết "bài học là..."
+❌ Khoe chức trực tiếp ("em là Giám đốc...")
+❌ Khoe tiền/thành tích lộ
+❌ Bán hàng lộ
+❌ Ngôn ngữ QUÁ SẠCH đến mức giả
+❌ Nhắc trend/âm thanh cụ thể
+❌ Drama bẩn / công kích đối thủ
 
-KHÔNG ĐƯỢC THÊM:
-- Thông tin kỹ thuật user chưa cấp
-- Tên thương hiệu ngoài dàn ý
-- Con số / thống kê
-- Chính sách / cam kết
-- Câu chuyện mới không có trong dàn ý
-
-**Bước 5 — BÁO NẾU THIẾU:**
-Nếu thiếu info quan trọng ảnh hưởng độ chính xác → cuối kịch bản ghi 1 dòng:
-`[Cần bổ sung: ...]`
-Nhưng VẪN viết bản tốt nhất dựa trên data hiện có.
-
-# CẤU TRÚC KỊCH BẢN
-1. HOOK 3 giây đầu: gây tò mò / chạm vấn đề / thừa nhận sai
-2. TÌNH HUỐNG/CÂU CHUYỆN: kể như vlog tại chỗ
-3. THÔNG ĐIỆP NGẦM: không lên lớp, người xem tự rút
-4. KẾT: câu hỏi ngược cho khán giả HOẶC câu suy ngẫm mở
-
-# YÊU CẦU BẮT BUỘC
-- Có ≥1 CÂU HỎI NGƯỢC cho người xem (kéo tương tác)
-- Cài tự nhiên ≥1 KEYWORD chính (không như hashtag):
-  Cai Duy Thái · 24 tuổi · 6 năm kinh nghiệm · Giám đốc ASKO Việt Nam · thiết bị bếp · thiết bị phòng tắm
-
-# LỖI TUYỆT ĐỐI CẤM (mỗi cái = FAIL bản này)
-
-❌ Làm MẤT TÍNH ĐỜI THỰC của câu chuyện (biến thành hư cấu / văn vẻ)
-❌ Biến giọng Thái thành **giọng MC / giọng nhà báo / giọng giáo viên**
-❌ Tự thêm thông tin không có trong dàn ý user đưa
-❌ KÉO DÀI chỉ để đủ số từ (padding, câu thừa, ý lặp)
-❌ Mở đầu bằng **định nghĩa khô cứng** ("Thiết bị bếp là...", "Trong ngành này...")
-❌ Dạy đời / tổng kết kiểu "bài học là..." / "chúng ta cần phải..."
-❌ Khoe chức danh trực tiếp ("em là Giám đốc..." → SAI; "hôm nọ em đi gặp khách..." → ĐÚNG)
-❌ Khoe tiền / thành tích lộ liễu
-❌ Bán hàng lộ liễu / kêu gọi mua hàng
-❌ Ngôn ngữ **QUÁ SẠCH / HOÀN HẢO** đến mức không giống người thật
-❌ Nhắc trend / âm thanh / câu viral cụ thể (app không xài trend)
-❌ Drama bẩn, giật tít lừa, công kích đối thủ
-
-# TỪ / CÂU SÁO RỖNG CẤM DÙNG
-
-Cấm tuyệt đối các cụm sau (đây là "mùi AI" / "mùi quảng cáo"):
+# TỪ SÁO RỖNG CẤM TUYỆT ĐỐI
 - "trong cuộc sống hiện đại"
 - "nâng tầm trải nghiệm" / "trải nghiệm tuyệt vời" / "trải nghiệm hoàn hảo"
 - "giải pháp hoàn hảo" / "lựa chọn hoàn hảo"
 - "chất lượng đỉnh cao" / "chất lượng vượt trội"
 - "công nghệ tiên tiến" / "công nghệ hiện đại"
 - "đẳng cấp" / "sang trọng đẳng cấp"
-- "định hình xu hướng"
-- "khẳng định vị thế"
-- "vươn tầm quốc tế"
+- "định hình xu hướng" / "khẳng định vị thế"
 - "chinh phục khách hàng"
 - "trong bối cảnh..."
 - "không thể phủ nhận rằng"
-- "chúng ta hãy cùng..."
-- "hãy cùng nhau..."
+- "chúng ta hãy cùng..." / "hãy cùng nhau..."
 - "các bạn thân mến"
 
 # OUTPUT
-Trả về DUY NHẤT kịch bản lời thoại. KHÔNG ghi "Hook:", "Thân:", "Kết:". Viết liền mạch.
-KHÔNG kèm ghi chú đạo diễn, hashtag, metadata.
+Trả DUY NHẤT kịch bản lời thoại. KHÔNG ghi "Hook:", "Thân:", "Kết:". Viết liền mạch.
 
 Sau kịch bản, chừa 1 dòng trống rồi ghi:
-[GỢI Ý HÌNH]: 2-3 gạch đầu dòng ngắn gợi ý cảnh quay/B-roll.
+[GỢI Ý HÌNH]: 2-3 gạch đầu dòng ngắn.
 
-Nếu thiếu info quan trọng, thêm dòng cuối:
-[Cần bổ sung: ...]
+Nếu thiếu info: thêm dòng cuối `[Cần bổ sung: ...]`
 """
 
 
+# =============================================================
+# 3 PHƯƠNG ÁN (variant modes)
+# =============================================================
+VARIANT_MODES = [
+    {
+        "name": "SÁT Ý GỐC",
+        "hint": (
+            "Giữ nguyên tinh thần và trình tự dàn ý user. Chỉ mượt câu, cắt lặp, "
+            "chuyển ý tự nhiên hơn. KHÔNG thêm ví dụ/quan điểm ngoài dàn ý. "
+            "Đây là bản 'user nói lại lần 2 nhưng hay hơn'."
+        ),
+    },
+    {
+        "name": "HẤP DẪN HƠN",
+        "hint": (
+            "Nâng cấp: hook mạnh hơn, thêm 1 chi tiết cảm xúc / ví dụ NGẮN (được phép "
+            "phát triển từ ý dàn ý, KHÔNG bịa case mới), câu chốt sắc hơn. "
+            "Vẫn bám thông điệp gốc nhưng nghe cuốn hơn."
+        ),
+    },
+    {
+        "name": "BẢN QUAY THỰC TẾ",
+        "hint": (
+            "Viết như đang QUAY tại chỗ: có chi tiết bối cảnh cảnh quay (đang đứng ở đâu, "
+            "vừa làm gì, cầm gì trong tay), có chỗ ngập ngừng / chuyển tay máy giả, "
+            "có ad-lib đời thường. Nghe như POV thật, không như đọc kịch bản."
+        ),
+    },
+]
+
+
+# =============================================================
+# BUILD SYSTEM PROMPT
+# =============================================================
 def build_system_prompt(
     profile_md: str,
     samples: list[str],
     duration_seconds: int = 60,
     tone: str = "default",
+    video_type: str = "knowledge",
+    context_scene: str = "",
+    main_message: str = "",
 ) -> str:
     wmin, wtarget, wmax = word_range(duration_seconds, tone)
     tone_ins = TONE_INSTRUCTIONS.get(tone, TONE_INSTRUCTIONS["default"])
+    vt = VIDEO_TYPE_RATIOS.get(video_type, VIDEO_TYPE_RATIOS["knowledge"])
 
     length_rule = (
-        f"\n# ĐỘ DÀI (BẮT BUỘC)\n"
-        f"Video **{duration_seconds} giây** → kịch bản **~{wtarget} từ tiếng Việt** "
-        f"(chấp nhận {wmin}-{wmax} từ).\n"
-        f"⚠️ ĐỪNG kéo dài chỉ để đủ chữ. Nếu nội dung tự nhiên chỉ đủ 90% target, chấp nhận. "
-        f"Ngắn hơn cũng vẫn PASS nếu văn hay + không hụt hơi.\n"
+        f"\n# ĐỘ DÀI\n"
+        f"Video **{duration_seconds}s** → **~{wtarget} từ** (chấp nhận {wmin}-{wmax}).\n"
+        f"⚠️ ĐỪNG kéo dài chỉ đủ chữ. Đủ ý + văn hay + ngắn hơn 10% vẫn PASS.\n"
     )
-    tone_rule = f"\n# {tone_ins}\n"
+
+    video_type_rule = (
+        f"\n# LOẠI VIDEO: {vt['label']}\n"
+        f"Tỷ lệ nội dung: {vt['ratio']}\n"
+        f"{vt['guide']}\n"
+    )
+
+    context_block = ""
+    if context_scene.strip() or main_message.strip():
+        context_block = "\n# BỐI CẢNH & THÔNG ĐIỆP\n"
+        if context_scene.strip():
+            context_block += f"- **Bối cảnh quay:** {context_scene.strip()}\n"
+        if main_message.strip():
+            context_block += f"- **Thông điệp chính:** {main_message.strip()}\n"
+        context_block += "→ Kịch bản PHẢI bám bối cảnh + đưa thông điệp chính (không lộ liễu).\n"
 
     parts = [
         CORE_RULES,
         length_rule,
-        tone_rule,
+        video_type_rule,
+        f"\n# {tone_ins}\n",
+        FIVE_LAYERS,
+        FORMULA_AND_CHECK,
+        context_block,
         "\n---\n\n# HỒ SƠ PHONG CÁCH NHÂN VẬT\n\n",
         profile_md,
     ]
 
     if samples:
-        parts.append("\n\n---\n\n# MẪU GIỌNG THẬT — BẮT CHƯỚC VĂN PHONG NÀY\n")
+        parts.append("\n\n---\n\n# MẪU GIỌNG THẬT — BẮT CHƯỚC VĂN PHONG\n")
         for i, s in enumerate(samples, 1):
             parts.append(f"\n### Mẫu {i}\n{s}\n")
         parts.append(
             "\n**Học VĂN PHONG, XƯNG HÔ, NHỊP CÂU, CHI TIẾT ĐỜI THƯỜNG** từ mẫu. "
-            "KHÔNG copy nội dung — nội dung phải khớp dàn ý user đưa.\n"
+            "KHÔNG copy nội dung.\n"
         )
     return "".join(parts)
 
 
+# =============================================================
+# BUILD USER PROMPT (with variant mode)
+# =============================================================
 def build_user_prompt(
     input_text: str,
     context_qa: str = "",
     variant_index: int = 0,
 ) -> str:
-    nudge = ""
-    if variant_index == 1:
-        nudge = ("\n\n**Bản này thử:** mở bằng 1 SAI LẦM cụ thể hoặc "
-                 "KHOẢNH KHẮC ĐỜI THƯỜNG bất ngờ trong dàn ý.")
-    elif variant_index == 2:
-        nudge = ("\n\n**Bản này thử:** mở bằng 1 CÂU HỎI THẲNG khiến "
-                 "người trong ngành phải khựng lại nghĩ.")
+    mode = VARIANT_MODES[variant_index] if 0 <= variant_index < len(VARIANT_MODES) else VARIANT_MODES[0]
 
     context_block = ""
     if context_qa.strip():
         context_block = (
             f"\n\n# CHI TIẾT VIDEO (user đã trả lời để bám sát)\n"
             f"```\n{context_qa.strip()}\n```\n"
-            f"→ ĐƯA CÁC CHI TIẾT NÀY vào kịch bản. Tôn trọng "
-            f"MỐC THỜI GIAN, ĐIỂM NHẤN CẢM XÚC, QUOTE THẬT của khách nếu có."
+            f"→ ĐƯA CÁC CHI TIẾT NÀY vào. Tôn trọng MỐC THỜI GIAN, ĐIỂM NHẤN CẢM XÚC, QUOTE THẬT."
         )
 
     return (
         f"# DÀN Ý THÔ CỦA USER (Cai Duy Thái)\n\n"
         f"```\n{input_text.strip()}\n```"
         f"{context_block}\n\n"
-        f"→ Áp 5 bước xử lý dàn ý thô ở system prompt. "
-        f"Viết 1 kịch bản văn nói bám VĂN PHONG được chỉ định, đúng ĐỘ DÀI yêu cầu, "
-        f"kèm [GỢI Ý HÌNH]."
-        f"{nudge}"
+        f"# PHƯƠNG ÁN CHO BẢN NÀY: **{mode['name']}**\n"
+        f"{mode['hint']}\n\n"
+        f"→ Áp CORE_RULES + 5 LỚP + CÔNG THỨC + 6 CÂU TỰ HỎI. "
+        f"Bám VĂN PHONG được chỉ định. Đủ ĐỘ DÀI. Kèm [GỢI Ý HÌNH]."
     )
 
 
 # =============================================================
-# CRITIQUE — 9 tiêu chí + kiểm tra sáo rỗng + kiểm tính chất tone
+# CRITIQUE — 12 tiêu chí
 # =============================================================
 CRITIQUE_PROMPT = """\
-Chấm kịch bản dưới đây theo 9 tiêu chí + 1 tiêu chí văn phong. Trả JSON đúng format, KHÔNG kèm gì khác.
+Chấm kịch bản theo 12 tiêu chí. Trả JSON đúng format, KHÔNG kèm gì khác.
 
 Kịch bản:
 ```
 {script}
 ```
 
-Dàn ý thô gốc user đưa:
+Dàn ý thô gốc:
 ```
 {input}
 ```
 
-Độ dài yêu cầu: {wmin}-{wmax} từ (target {wtarget}).
-Văn phong yêu cầu: **{tone_name}** — {tone_summary}
+Yêu cầu: {wmin}-{wmax} từ (target {wtarget}) · Loại: **{video_type_label}** · Tone: **{tone_name}** — {tone_summary}
 
 Hồ sơ:
 ```
 {profile_excerpt}
 ```
 
-Tiêu chí (mỗi cái "pass": true/false + "reason" ngắn 1 câu):
+Tiêu chí (mỗi cái pass true/false + reason 1 câu):
 
-1. **xưng_hô** — Dùng "em/các bác" xuyên suốt, không "tôi/bạn/mọi người"?
-2. **độ_dài** — Đếm thử có nằm trong {wmin}-{wmax} từ không?
-3. **có_hook** — 1-2 câu đầu níu người xem (tò mò/sai lầm/vấn đề đời thường)?
-4. **câu_hỏi_ngược** — Có ≥1 câu hỏi cho khán giả (không phải câu suy ngẫm cá nhân)?
-5. **giọng_đời_thường** — Nói miệng như đang vlog, KHÔNG như đọc bài báo / MC?
-6. **không_khoe_không_lên_lớp** — Không khoe chức/tiền/thành tích, không tổng kết "bài học là..."?
-7. **keyword_tự_nhiên** — Có ≥1 keyword chính cài như chi tiết câu chuyện (không hashtag)?
-8. **đúng_đối_tượng** — Người trong ngành (sale, KTS, nội thất, kỹ thuật) thấy mình trong đó?
-9. **không_sáo_rỗng** — KHÔNG có cụm "trong cuộc sống hiện đại", "nâng tầm trải nghiệm", "giải pháp hoàn hảo", "công nghệ tiên tiến", "đẳng cấp", "chinh phục khách hàng", "hãy cùng nhau"... hay câu văn giáo trình?
-10. **đúng_văn_phong** — Kịch bản có THỂ HIỆN RÕ tính chất của tone "{tone_name}"? (vd humor phải THẬT SỰ hài, deep phải THẬT SỰ sâu, không phải nói tone thường mà gọi là tone đó)
+1. **xưng_hô** — "em/các bác" xuyên suốt?
+2. **độ_dài** — trong {wmin}-{wmax} từ?
+3. **có_hook** — 1-2 câu đầu níu người xem?
+4. **câu_hỏi_ngược** — có ≥1 câu hỏi cho khán giả?
+5. **giọng_đời_thường** — nói miệng vlog, không MC/bài báo?
+6. **không_khoe_không_lên_lớp** — không khoe/không tổng kết bài học?
+7. **keyword_tự_nhiên** — ≥1 keyword chính cài như chi tiết?
+8. **đúng_đối_tượng** — người trong ngành thấy mình trong đó?
+9. **không_sáo_rỗng** — không có "nâng tầm", "công nghệ tiên tiến", "đẳng cấp", "hãy cùng"...?
+10. **đúng_văn_phong** — thể hiện RÕ tone (humor thật hài, deep thật sâu...)?
+11. **đủ_5_lớp** — có đủ THÔNG TIN + KIẾN THỨC + CẢM XÚC + TRẢI NGHIỆM + QUAN ĐIỂM RIÊNG?
+12. **có_quan_điểm_riêng** — có ≥1 câu quan điểm rõ ràng của Cao Duy Thái (không generic)?
 
-Format JSON BẮT BUỘC:
+Format:
 {{
   "scores": {{
     "xưng_hô": {{"pass": true, "reason": "..."}},
@@ -385,23 +473,25 @@ Format JSON BẮT BUỘC:
     "keyword_tự_nhiên": {{"pass": true, "reason": "..."}},
     "đúng_đối_tượng": {{"pass": true, "reason": "..."}},
     "không_sáo_rỗng": {{"pass": true, "reason": "..."}},
-    "đúng_văn_phong": {{"pass": true, "reason": "..."}}
+    "đúng_văn_phong": {{"pass": true, "reason": "..."}},
+    "đủ_5_lớp": {{"pass": true, "reason": "..."}},
+    "có_quan_điểm_riêng": {{"pass": true, "reason": "..."}}
   }},
   "overall_pass": true,
-  "summary": "1-2 câu nhận xét tổng quát."
+  "summary": "1-2 câu nhận xét."
 }}
 
-Bản PASS = tất cả 10 tiêu chí pass. 1 fail → overall_pass = false.
+Bản PASS = tất cả 12 pass. 1 fail → overall_pass = false.
 """
 
 
 TONE_SUMMARY = {
-    "default": "gần gũi đời thường 70/20/10, nói miệng vlog",
-    "humor": "HÀI NHẸ 40% — phải THẬT SỰ hài, có so sánh bất ngờ / tự trào / than thở vui",
-    "deep": "SÂU SẮC 50% — nhịp chậm, câu hỏi suy ngẫm, ẩn dụ nhẹ từ chi tiết đời",
-    "storytelling": "KỂ CHUYỆN — mở 'Hôm nọ...', có nhân vật/địa điểm/mốc thời gian",
-    "energetic": "SÔI NỔI — câu ngắn dồn dập, ngữ khí mạnh, có moment cao trào",
-    "selfmock": "TỰ TRÀO ĐẬM — chê mình xuyên suốt, thừa nhận cái dở ngay đầu",
+    "default": "gần gũi 70/20/10, nói miệng vlog",
+    "humor": "HÀI NHẸ 40% — có kỹ thuật hài (tự trào/so sánh bất ngờ/than thở vui)",
+    "deep": "SÂU 50% — chậm, ẩn dụ nhẹ, câu hỏi suy ngẫm",
+    "storytelling": "KỂ CHUYỆN — mở 'Hôm nọ...', nhân vật/địa điểm/mốc thời gian",
+    "energetic": "SÔI NỔI — câu ngắn dồn dập, ngữ khí mạnh",
+    "selfmock": "TỰ TRÀO ĐẬM — chê mình xuyên suốt",
 }
 
 
@@ -411,58 +501,54 @@ def build_critique_prompt(
     profile_md: str,
     duration_seconds: int = 60,
     tone: str = "default",
+    video_type: str = "knowledge",
 ) -> str:
     wmin, wtarget, wmax = word_range(duration_seconds, tone)
+    vt = VIDEO_TYPE_RATIOS.get(video_type, VIDEO_TYPE_RATIOS["knowledge"])
     return CRITIQUE_PROMPT.format(
         script=script,
         input=input_text,
         profile_excerpt=profile_md[:1500],
         wmin=wmin, wtarget=wtarget, wmax=wmax,
+        video_type_label=vt["label"],
         tone_name=tone,
         tone_summary=TONE_SUMMARY.get(tone, TONE_SUMMARY["default"]),
     )
 
 
 # =============================================================
-# QUESTION SUGGESTION (giữ nguyên logic cũ, chỉ tinh chỉnh prompt)
+# QUESTION SUGGESTION
 # =============================================================
 QUESTION_PROMPT = """\
 Nhân vật: Cai Duy Thái, làm content TikTok về thiết bị bếp/phòng tắm.
-Anh ấy đang chuẩn bị quay 1 video dài **{duration_seconds} giây**.
+Video: **{duration_seconds}s** · loại: **{video_type_label}**
 
-Dàn ý THÔ của anh ấy về video này (thường là nói rời rạc, ý chưa mượt):
+Dàn ý THÔ của anh:
 ```
 {input}
 ```
 
-Nhiệm vụ: sinh **5 câu hỏi CỤ THỂ, sát video này** để anh ấy trả lời, giúp
-kịch bản chi tiết BÁM SÁT cảnh quay và cảm xúc thật.
+Sinh **5 câu hỏi CỤ THỂ, sát video này** để anh trả lời, giúp kịch bản bám sát cảnh quay và cảm xúc thật.
 
 Câu hỏi PHẢI:
-- Bám vào NỘI DUNG cụ thể anh đưa (nhắc chi tiết trong dàn ý, KHÔNG generic "video có gì hay?")
-- Hỏi về MỐC THỜI GIAN cụ thể (vd "giây 5-10 quay gì?", "đoạn giữa nhấn cảm xúc nào?")
-- Hỏi về CẢM XÚC THẬT anh muốn truyền tải
-- Hỏi về QUOTE THẬT / PHẢN ỨNG KHÁCH nếu có
-- Hỏi về ĐIỂM BẤT NGỜ / CAO TRÀO nếu có
-- Hỏi về NHÂN VẬT phụ (khách, đồng nghiệp, sếp) nếu có
+- Bám vào NỘI DUNG cụ thể (nhắc chi tiết trong dàn ý)
+- Hỏi MỐC THỜI GIAN cụ thể (giây X-Y quay gì?)
+- Hỏi CẢM XÚC THẬT
+- Hỏi QUOTE THẬT / PHẢN ỨNG KHÁCH
+- Hỏi ĐIỂM BẤT NGỜ / CAO TRÀO
+- Hỏi NHÂN VẬT phụ (khách, đồng nghiệp, sếp)
 
-KHÔNG hỏi: chức danh, keyword muốn nhét, format video (đã cố định).
+KHÔNG hỏi: chức danh, keyword, format video.
 
 Trả JSON:
-{{
-  "questions": [
-    "Câu hỏi 1...?",
-    "Câu hỏi 2...?",
-    "Câu hỏi 3...?",
-    "Câu hỏi 4...?",
-    "Câu hỏi 5...?"
-  ]
-}}
+{{"questions": ["...?","...?","...?","...?","...?"]}}
 """
 
 
-def build_questions_prompt(input_text: str, duration_seconds: int) -> str:
+def build_questions_prompt(input_text: str, duration_seconds: int, video_type: str = "knowledge") -> str:
+    vt = VIDEO_TYPE_RATIOS.get(video_type, VIDEO_TYPE_RATIOS["knowledge"])
     return QUESTION_PROMPT.format(
         input=input_text.strip(),
         duration_seconds=duration_seconds,
+        video_type_label=vt["label"],
     )

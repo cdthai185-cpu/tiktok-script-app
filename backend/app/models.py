@@ -15,12 +15,19 @@ class Script(Base):
     status: Mapped[str] = mapped_column(String(20), default="draft")
 
     # === NEW: kịch bản chi tiết ===
-    # Thời lượng video mong muốn (giây). 0 = auto (~60s).
     duration_seconds: Mapped[int] = mapped_column(default=60)
     # Văn phong: default | humor | deep | storytelling | energetic | selfmock
     style_tone: Mapped[str] = mapped_column(String(40), default="default")
-    # Q&A: các câu trả lời của user cho câu hỏi app suggest (context sát video)
+    # Q&A: các câu trả lời của user cho câu hỏi app suggest
     context_qa: Mapped[str] = mapped_column(Text, default="")
+
+    # Loại video: product | vlog | knowledge | case | opinion
+    # Quyết định tỷ lệ 5 lớp nội dung
+    video_type: Mapped[str] = mapped_column(String(20), default="knowledge")
+    # Bối cảnh quay (showroom / công trường / studio / ngoài đường...)
+    context_scene: Mapped[str] = mapped_column(Text, default="")
+    # Thông điệp chính (1 câu tổng kết ý muốn truyền tải)
+    main_message: Mapped[str] = mapped_column(Text, default="")
 
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

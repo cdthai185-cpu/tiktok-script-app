@@ -10,6 +10,9 @@ class ScriptBase(BaseModel):
     duration_seconds: int = 60
     style_tone: str = "default"
     context_qa: str = ""
+    video_type: str = "knowledge"
+    context_scene: str = ""
+    main_message: str = ""
 
 
 class ScriptCreate(ScriptBase):
@@ -24,6 +27,9 @@ class ScriptUpdate(BaseModel):
     duration_seconds: int | None = None
     style_tone: str | None = None
     context_qa: str | None = None
+    video_type: str | None = None
+    context_scene: str | None = None
+    main_message: str | None = None
 
 
 class ScriptOut(ScriptBase):

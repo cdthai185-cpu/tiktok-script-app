@@ -9,6 +9,7 @@ import {
   type GenerateResponse,
   type VariantAttempt,
   STYLE_TONE_OPTIONS,
+  VIDEO_TYPE_OPTIONS,
 } from "../../lib/api";
 
 function estimateWords(duration: number, tone: string): { min: number; target: number; max: number } {
@@ -40,7 +41,6 @@ export default function EditScriptPage() {
   const [generating, setGenerating] = useState(false);
   const [genResult, setGenResult] = useState<GenerateResponse | null>(null);
 
-  // Q&A state
   const [askingQ, setAskingQ] = useState(false);
   const [questions, setQuestions] = useState<string[] | null>(null);
   const [answers, setAnswers] = useState<string[]>([]);
@@ -63,6 +63,17 @@ export default function EditScriptPage() {
     return estimateWords(script.duration_seconds || 60, script.style_tone || "default");
   }, [script?.duration_seconds, script?.style_tone]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const currentVideoType = script
+    ? VIDEO_TYPE_OPTIONS.find((v) => v.value === (script.video_type || "knowledge"))
+    : null;
+
+  async function persist(patch: Partial<Script>) {
+    if (!script) return;
+    const merged = { ...script, ...patch };
+    setScript(merged);
+    // debounce nhẹ: chỉ save khi user cần
+  }
+
   async function onSave() {
     if (!script) return;
     setSaving(true);
@@ -75,6 +86,9 @@ export default function EditScriptPage() {
         duration_seconds: script.duration_seconds,
         style_tone: script.style_tone,
         context_qa: script.context_qa,
+        video_type: script.video_type,
+        context_scene: script.context_scene,
+        main_message: script.main_message,
       });
       setScript(updated);
       setSavedAt(new Date().toLocaleTimeString());
@@ -87,22 +101,20 @@ export default function EditScriptPage() {
 
   async function onAskQuestions() {
     if (!script || !script.input_text.trim()) {
-      setErr("Cần có mô tả video trước khi hỏi.");
+      setErr("Cần có dàn ý trước khi hỏi.");
       return;
     }
     setAskingQ(true);
     setErr(null);
     setQuestions(null);
     try {
-      // Save duration trước khi hỏi (để backend dùng đúng)
       await api.updateScript(id, {
         duration_seconds: script.duration_seconds,
+        video_type: script.video_type,
       });
       const res = await api.suggestQuestionsForScript(id);
       setQuestions(res.questions);
-      // Init answers array cùng độ dài
-      const existing = script.context_qa || "";
-      setAnswers(res.questions.map(() => existing ? "" : ""));
+      setAnswers(res.questions.map(() => ""));
     } catch (e) {
       setErr((e as Error).message);
     } finally {
@@ -137,14 +149,16 @@ export default function EditScriptPage() {
 
   async function onGenerate() {
     if (!script || !script.input_text.trim()) {
-      setErr("Cần có mô tả video trước khi sinh kịch bản.");
+      setErr("Cần có dàn ý trước khi sinh kịch bản.");
       return;
     }
-    // Save trước để backend đọc duration/tone/context_qa mới nhất
     await api.updateScript(id, {
       duration_seconds: script.duration_seconds,
       style_tone: script.style_tone,
       context_qa: script.context_qa,
+      video_type: script.video_type,
+      context_scene: script.context_scene,
+      main_message: script.main_message,
     });
     setGenerating(true);
     setErr(null);
@@ -191,6 +205,7 @@ export default function EditScriptPage() {
       <h1 className="text-xl sm:text-2xl font-semibold mt-2 mb-6">Sửa kịch bản</h1>
 
       <div className="space-y-4">
+        {/* 1. Tiêu đề */}
         <div>
           <label className="block text-xs font-medium text-neutral-600 mb-1">Tiêu đề</label>
           <input
@@ -200,22 +215,68 @@ export default function EditScriptPage() {
           />
         </div>
 
+        {/* 2. Loại video */}
         <div>
-          <label className="block text-xs font-medium text-neutral-600 mb-1">Mô tả thô video (input)</label>
-          <textarea
-            value={script.input_text}
-            onChange={(e) => setScript({ ...script, input_text: e.target.value })}
-            rows={5}
+          <label className="block text-xs font-medium text-neutral-600 mb-1">Loại video</label>
+          <select
+            value={script.video_type || "knowledge"}
+            onChange={(e) => setScript({ ...script, video_type: e.target.value })}
+            className="w-full rounded-lg border border-neutral-300 px-3 py-3 text-base bg-white focus:outline-none focus:ring-2 focus:ring-neutral-900"
+          >
+            {VIDEO_TYPE_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+          {currentVideoType && (
+            <div className="text-xs text-neutral-500 mt-1">
+              Tỷ lệ nội dung: <span className="font-medium text-neutral-700">{currentVideoType.ratio}</span>
+            </div>
+          )}
+        </div>
+
+        {/* 3. Bối cảnh quay */}
+        <div>
+          <label className="block text-xs font-medium text-neutral-600 mb-1">
+            Bối cảnh quay <span className="text-neutral-400 font-normal">(showroom / công trường / studio…)</span>
+          </label>
+          <input
+            value={script.context_scene}
+            onChange={(e) => setScript({ ...script, context_scene: e.target.value })}
+            placeholder="Vd: đứng trong showroom ASKO Nguyễn Trãi, camera đặt cạnh máy rửa bát"
             className="w-full rounded-lg border border-neutral-300 px-3 py-3 text-base focus:outline-none focus:ring-2 focus:ring-neutral-900"
           />
         </div>
 
-        {/* === DURATION + TONE === */}
+        {/* 4. Dàn ý thô */}
+        <div>
+          <label className="block text-xs font-medium text-neutral-600 mb-1">Dàn ý thô (input)</label>
+          <textarea
+            value={script.input_text}
+            onChange={(e) => setScript({ ...script, input_text: e.target.value })}
+            rows={6}
+            placeholder="Ghi ý nào ra ý đó, câu rời rạc cũng OK — em/AI sẽ biến thành văn nói mượt."
+            className="w-full rounded-lg border border-neutral-300 px-3 py-3 text-base focus:outline-none focus:ring-2 focus:ring-neutral-900"
+          />
+        </div>
+
+        {/* 5. Thông điệp chính */}
+        <div>
+          <label className="block text-xs font-medium text-neutral-600 mb-1">
+            Thông điệp chính <span className="text-neutral-400 font-normal">(1 câu tổng kết muốn khán giả nhớ)</span>
+          </label>
+          <textarea
+            value={script.main_message}
+            onChange={(e) => setScript({ ...script, main_message: e.target.value })}
+            rows={2}
+            placeholder="Vd: 'Đắt chưa chắc dùng sướng, đúng mới dùng sướng.'"
+            className="w-full rounded-lg border border-neutral-300 px-3 py-3 text-base focus:outline-none focus:ring-2 focus:ring-neutral-900"
+          />
+        </div>
+
+        {/* 6 + 7. Thời lượng + Giọng */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label className="block text-xs font-medium text-neutral-600 mb-1">
-              Thời lượng video (giây)
-            </label>
+            <label className="block text-xs font-medium text-neutral-600 mb-1">Thời lượng (giây)</label>
             <input
               type="number"
               min={10}
@@ -228,14 +289,14 @@ export default function EditScriptPage() {
             />
             {wordRange && (
               <div className="text-xs text-neutral-500 mt-1">
-                = {formatDuration(script.duration_seconds || 60)} · target ~
+                = {formatDuration(script.duration_seconds || 60)} · ~
                 <span className="font-medium text-neutral-800">{wordRange.target} từ</span>{" "}
-                (chấp nhận {wordRange.min}-{wordRange.max})
+                ({wordRange.min}-{wordRange.max})
               </div>
             )}
           </div>
           <div>
-            <label className="block text-xs font-medium text-neutral-600 mb-1">Văn phong</label>
+            <label className="block text-xs font-medium text-neutral-600 mb-1">Giọng (văn phong)</label>
             <select
               value={script.style_tone || "default"}
               onChange={(e) => setScript({ ...script, style_tone: e.target.value })}
@@ -251,13 +312,13 @@ export default function EditScriptPage() {
           </div>
         </div>
 
-        {/* === Q&A === */}
+        {/* Q&A */}
         <div className="rounded-xl border border-blue-200 bg-blue-50/40 p-3 sm:p-4">
           <div className="flex items-center justify-between gap-3 flex-wrap mb-2">
             <div>
               <div className="font-medium text-sm">Hỏi thêm để bám sát video (tuỳ chọn)</div>
               <div className="text-xs text-neutral-600">
-                App sẽ hỏi 5 câu cụ thể (mốc thời gian, cảm xúc, quote…). Anh trả lời càng chi tiết,
+                App hỏi 5 câu cụ thể theo dàn ý + loại video. Anh trả lời càng chi tiết,
                 kịch bản càng sát cảnh quay.
               </div>
             </div>
@@ -266,7 +327,7 @@ export default function EditScriptPage() {
               disabled={askingQ || !script.input_text.trim()}
               className="rounded-lg bg-blue-600 text-white px-4 py-2.5 text-sm font-medium disabled:opacity-40 w-full sm:w-auto"
             >
-              {askingQ ? "Đang sinh câu hỏi…" : "🎯 Hỏi thêm để rõ"}
+              {askingQ ? "Đang sinh…" : "🎯 Hỏi thêm để rõ"}
             </button>
           </div>
 
@@ -324,13 +385,14 @@ export default function EditScriptPage() {
           )}
         </div>
 
-        {/* === GENERATE === */}
+        {/* GENERATE */}
         <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-3 sm:p-4">
           <div className="flex items-center justify-between gap-3 flex-wrap mb-2">
             <div>
-              <div className="font-medium text-sm">Sinh kịch bản chi tiết</div>
+              <div className="font-medium text-sm">Sinh 3 phương án kịch bản</div>
               <div className="text-xs text-neutral-500">
-                3 bản mỗi lần, mỗi bản tự chấm 9 tiêu chí. Mất ~30-60 giây.
+                <span className="font-medium">Sát ý gốc</span> · <span className="font-medium">Hấp dẫn hơn</span> · <span className="font-medium">Bản quay thực tế</span> —
+                mỗi bản tự chấm 12 tiêu chí. ~30-60s.
               </div>
             </div>
             <button
@@ -338,32 +400,43 @@ export default function EditScriptPage() {
               disabled={generating || !script.input_text.trim()}
               className="rounded-lg bg-indigo-600 text-white px-5 py-2.5 text-sm font-medium disabled:opacity-40 w-full sm:w-auto"
             >
-              {generating ? "Đang sinh…" : "✨ Sinh 3 bản"}
+              {generating ? "Đang sinh…" : "✨ Sinh 3 phương án"}
             </button>
           </div>
 
           {generating && (
             <div className="text-xs text-neutral-500 mt-2">
-              Đang gọi Groq sinh + chấm critique. Đừng tắt tab.
+              Đang gọi LLM sinh + chấm critique. Đừng tắt tab.
             </div>
           )}
 
           {genResult && (
             <div className="mt-4 space-y-3">
               <div className="text-xs text-neutral-500">
-                {genResult.provider}/{genResult.model} · few-shot {genResult.samples_used} mẫu ·
-                target {genResult.word_range?.target} từ
-                {genResult.context_qa_used ? " · có context Q&A" : ""}
+                {genResult.provider}/{genResult.model} · {genResult.video_type_label} ·
+                target {genResult.word_range?.target} từ · few-shot {genResult.samples_used} mẫu
+                {genResult.context_qa_used ? " · có Q&A" : ""}
+                {genResult.context_scene_used ? " · có bối cảnh" : ""}
+                {genResult.main_message_used ? " · có thông điệp chính" : ""}
               </div>
               {genResult.variants.map((v) => {
                 const att = v.chosen;
                 if (!att) return null;
-                return <VariantCard key={v.variant_index} index={v.variant_index} att={att} onPick={pickVariant} />;
+                return (
+                  <VariantCard
+                    key={v.variant_index}
+                    index={v.variant_index}
+                    name={v.variant_name}
+                    att={att}
+                    onPick={pickVariant}
+                  />
+                );
               })}
             </div>
           )}
         </div>
 
+        {/* Output */}
         <div>
           <label className="block text-xs font-medium text-neutral-600 mb-1">
             Kịch bản đã sinh (sửa thoải mái)
@@ -372,12 +445,12 @@ export default function EditScriptPage() {
             value={script.generated_text}
             onChange={(e) => setScript({ ...script, generated_text: e.target.value })}
             rows={14}
-            placeholder="Bấm '✨ Sinh 3 bản' ở trên hoặc tự viết."
+            placeholder="Bấm '✨ Sinh 3 phương án' ở trên hoặc tự viết."
             className="w-full rounded-lg border border-neutral-300 px-3 py-3 text-base font-mono leading-relaxed focus:outline-none focus:ring-2 focus:ring-neutral-900"
           />
         </div>
 
-        <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-3 flex-wrap sticky bottom-2 bg-white/80 backdrop-blur rounded-lg p-2 -mx-2">
           <button
             onClick={onSave}
             disabled={saving}
@@ -400,10 +473,12 @@ export default function EditScriptPage() {
 
 function VariantCard({
   index,
+  name,
   att,
   onPick,
 }: {
   index: number;
+  name?: string;
   att: VariantAttempt;
   onPick: (att: VariantAttempt) => void;
 }) {
@@ -411,13 +486,22 @@ function VariantCard({
   const failedCount = Object.values(att.critique.scores).filter((s) => !s.pass).length;
   const ok = att.pass;
 
+  const badges: Record<number, { color: string; bg: string; label: string }> = {
+    0: { color: "text-emerald-800", bg: "bg-emerald-100 border-emerald-300", label: "Sát ý gốc" },
+    1: { color: "text-purple-800", bg: "bg-purple-100 border-purple-300", label: "Hấp dẫn hơn" },
+    2: { color: "text-amber-800", bg: "bg-amber-100 border-amber-300", label: "Bản quay thực tế" },
+  };
+  const badge = badges[index] ?? { color: "text-neutral-700", bg: "bg-neutral-100 border-neutral-300", label: name || `Bản ${index + 1}` };
+
   return (
     <div
       className={`rounded-lg border p-3 sm:p-4 ${ok ? "border-emerald-200 bg-white" : "border-amber-200 bg-amber-50/40"}`}
     >
-      <div className="flex items-center justify-between gap-2 mb-2">
-        <div className="flex items-center gap-2 text-sm">
-          <span className="font-medium">Bản {index + 1}</span>
+      <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+        <div className="flex items-center gap-2 text-sm flex-wrap">
+          <span className={`${badge.color} ${badge.bg} border rounded px-2 py-0.5 text-xs font-medium`}>
+            {badge.label}
+          </span>
           {ok ? (
             <span className="text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-2 py-0.5 text-xs">
               PASS
@@ -452,7 +536,7 @@ function VariantCard({
         onClick={() => setShowScores((v) => !v)}
         className="mt-2 text-xs text-neutral-500 hover:underline"
       >
-        {showScores ? "Ẩn chấm điểm" : "Xem chấm điểm 9 tiêu chí"}
+        {showScores ? "Ẩn chấm điểm" : "Xem chấm điểm 12 tiêu chí"}
       </button>
       {showScores && (
         <div className="mt-2 text-xs space-y-1">
