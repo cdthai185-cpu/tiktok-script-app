@@ -53,10 +53,10 @@ def _generate_text(system: str, user: str, max_tokens: int, temperature: float =
                 return (resp.choices[0].message.content or "").strip()
             except APIError as e:
                 last_error = e
-                # 429 = rate limit → thử model tiếp theo
-                if getattr(e, "status_code", None) == 429:
+                # 429 rate limit + 400 decommissioned → thử model tiếp
+                code = getattr(e, "status_code", None)
+                if code in (429, 400, 404):
                     continue
-                # Lỗi khác → raise ngay
                 raise
         # Tất cả model đều 429
         raise GenerationError(
